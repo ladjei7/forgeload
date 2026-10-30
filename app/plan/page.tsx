@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import ExercisePicker from '../components/ExercisePicker';
 
 export default function PlanPage() {
   const [planName, setPlanName] = useState("");
@@ -207,23 +208,7 @@ export default function PlanPage() {
           >
             Step 3 — Add Exercises
           </h2>
-          <input
-            type="text"
-            placeholder="Exercise name"
-            value={exerciseName}
-            onChange={(e) => setExerciseName(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.75rem",
-              borderRadius: "8px",
-              border: "1px solid #333",
-              background: "#1a1a1a",
-              color: "#fff",
-              fontSize: "16px",
-              marginBottom: "0.75rem",
-              boxSizing: "border-box",
-            }}
-          />
+          <ExercisePicker value={exerciseName} onChange={setExerciseName} />
           <div
             style={{
               display: "grid",
