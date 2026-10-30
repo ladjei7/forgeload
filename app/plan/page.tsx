@@ -31,9 +31,13 @@ export default function PlanPage() {
   useEffect(() => { if (dayId) loadExercises(dayId); else setExercises([]); }, [dayId]);
 
   async function loadPlans() {
-    const { data } = await supabase.from('workout_plans').select('id, name').order('created_at');
-    if (data) { setPlans(data); if (data.length && !planId) setPlanId(data[data.length - 1].id); }
-  }
+  const { data } = await supabase.from('workout_plans').select('id, name').order('created_at');
+  if (!data) return;
+  setPlans(data);
+  setPlanId(prev =>
+    data.find(p => p.id === prev) ? prev : (data[data.length - 1]?.id ?? '')
+  );
+}
   async function loadDays(id: string) {
     const { data } = await supabase.from('workout_days').select('id, day_name, sort_order').eq('plan_id', id).order('sort_order');
     if (data) { setDays(data); if (!data.find(d => d.id === dayId)) setDayId(data[0]?.id ?? ''); }
@@ -72,9 +76,10 @@ export default function PlanPage() {
     await supabase.from('workout_days').delete().eq('id', id); await loadDays(planId);
   }
   async function removePlan(id: string) {
-    if (!confirm('Delete this whole plan?')) return;
-    await supabase.from('workout_plans').delete().eq('id', id); setPlanId(''); await loadPlans();
-  }
+  if (!confirm('Delete this whole plan?')) return;
+  await supabase.from('workout_plans').delete().eq('id', id);
+  await loadPlans();
+}
 
   return (
     <main style={{ minHeight: '100vh', background: '#000', color: '#fff', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
