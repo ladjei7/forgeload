@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
+import AuthGate from "./AuthGate";
 
 export const metadata: Metadata = {
   title: "Forgeload",
@@ -15,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body style={{ margin: 0, background: '#000', color: '#fff', fontFamily: 'sans-serif', paddingBottom: '80px' }}>
-        {children}
+        <AuthGate>{children}</AuthGate>
 
         {/* Bottom Navigation */}
         <nav style={{
