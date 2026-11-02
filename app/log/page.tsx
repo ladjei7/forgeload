@@ -40,6 +40,7 @@ export default function LogPage() {
   const [days, setDays] = useState<Day[]>([]);
   const [dayId, setDayId] = useState('');
   const [suggestedDayId, setSuggestedDayId] = useState('');
+  const [emptyDays, setEmptyDays] = useState<string[]>([]);
   const [exercises, setExercises] = useState<PlanEx[]>([]);
   const [prev, setPrev] = useState<Record<string, Prev>>({});
   const [bestWeight, setBestWeight] = useState<Record<string, number>>({});
@@ -141,7 +142,15 @@ export default function LogPage() {
         .order('completed_at', { ascending: false }).limit(1);
       last = (done?.[0] as { workout_day_id: string } | undefined)?.workout_day_id ?? null;
     }
-    const suggested = nextDayId(list, last) ?? '';
+    // Days with no exercises can't be started, so rotation skips them.
+    let withExercises = new Set<string>();
+    if (list.length) {
+      const { data: exDays } = await supabase
+        .from('plan_exercises').select('workout_day_id').in('workout_day_id', list.map(d => d.id));
+      withExercises = new Set((exDays ?? []).map(r => (r as { workout_day_id: string }).workout_day_id));
+    }
+    setEmptyDays(list.filter(d => !withExercises.has(d.id)).map(d => d.id));
+    const suggested = nextDayId(list, last, id => withExercises.has(id)) ?? '';
     setSuggestedDayId(suggested);
     const chosen = preferDay ?? suggested;
     setDayId(chosen);
@@ -448,6 +457,9 @@ export default function LogPage() {
           <button onClick={startWorkout} disabled={starting || exercises.length === 0} className="h-14 w-full rounded-2xl bg-white text-lg font-bold text-black disabled:opacity-50">
             {starting ? 'Starting...' : exercises.length === 0 ? 'No exercises in this workout' : 'Start workout'}
           </button>
+          {exercises.length === 0 && (
+            <p className="mt-3 text-center text-sm text-[#aaa]">This workout has no exercises yet. <Link href="/plan" className="text-green-400 underline">Add exercises in Plan</Link>, or choose a different workout.</p>
+          )}
           <button onClick={() => setShowPicker(v => !v)} className="mt-3 w-full text-sm text-[#888] underline-offset-2 hover:underline">Choose a different workout</button>
           {showPicker && (
             <div className={`${card} mt-3 space-y-3`}>
@@ -460,7 +472,7 @@ export default function LogPage() {
               )}
               <label className="block text-xs text-[#888]">Workout
                 <select value={dayId} onChange={e => changeDay(e.target.value)} className={`${inputCls} mt-1 text-base`}>
-                  {days.map(d => <option key={d.id} value={d.id}>{d.day_name}{d.id === suggestedDayId ? ' (up next)' : ''}</option>)}
+                  {days.map(d => <option key={d.id} value={d.id}>{d.day_name}{d.id === suggestedDayId ? ' (up next)' : ''}{emptyDays.includes(d.id) ? ' (no exercises yet)' : ''}</option>)}
                 </select>
               </label>
             </div>

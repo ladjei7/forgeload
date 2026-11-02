@@ -85,6 +85,20 @@ test('rotation: deleted last day restarts from the top; empty plan -> null', () 
   assert.equal(nextDayId([], 'a'), null);
 });
 
+test('rotation: skips days that have no exercises (the "stuck on an empty Tuesday" bug)', () => {
+  const week = [{ id: 'mon' }, { id: 'tue' }, { id: 'wed' }];
+  const has = (id: string) => id !== 'tue';
+  assert.equal(nextDayId(week, 'mon', has), 'wed'); // Tuesday is empty -> Wednesday
+  assert.equal(nextDayId(week, 'wed', has), 'mon'); // wraps, still skipping Tuesday
+  assert.equal(nextDayId(week, null, has), 'mon');
+});
+
+test('rotation: only one startable day -> it repeats; nothing startable -> plain rotation', () => {
+  const week = [{ id: 'mon' }, { id: 'tue' }];
+  assert.equal(nextDayId(week, 'mon', id => id === 'mon'), 'mon');
+  assert.equal(nextDayId(week, 'mon', () => false), 'tue');
+});
+
 test('local dates are not shifted by UTC', () => {
   const evening = new Date(2026, 10, 1, 22, 30); // Nov 1, 10:30 PM local
   assert.equal(localDateString(evening), '2026-11-01');
