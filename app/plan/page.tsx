@@ -72,12 +72,21 @@ export default function PlanPage() {
   }
   async function addExercise() {
     if (!exerciseName.trim() || !dayId || !sets || !repMin || !repMax) return setMessage('Fill in the exercise, sets, min reps, and max reps.');
+    // If the name was typed (or edited) without tapping a result, link it when it exactly matches
+    // one exercise the user can see. Never guess: no exact match means no link.
+    let linkId = exerciseId;
+    if (!linkId) {
+      const want = exerciseName.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const { data: hits } = await supabase.rpc('search_exercises', { q: exerciseName.trim(), lim: 10 });
+      const exact = ((hits ?? []) as { id: string; name: string }[]).filter(h => h.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === want);
+      if (exact.length === 1) linkId = exact[0].id;
+    }
     const { error } = await supabase.from('plan_exercises').insert([{
-      workout_day_id: dayId, exercise_name: exerciseName.trim(), exercise_id: exerciseId || null,
+      workout_day_id: dayId, exercise_name: exerciseName.trim(), exercise_id: linkId || null,
       target_sets: parseInt(sets), rep_min: parseInt(repMin), rep_max: parseInt(repMax), sort_order: exercises.length,
     }]);
     if (error) return setMessage('Error: ' + error.message);
-    if (exerciseId) void supabase.rpc('touch_exercise', { ex: exerciseId }); // recents; failure is harmless
+    if (linkId) void supabase.rpc('touch_exercise', { ex: linkId }); // recents; failure is harmless
     setMessage('Added: ' + exerciseName); setExerciseName(''); setExerciseId(''); await loadExercises(dayId);
   }
   async function applyTemplate() {
