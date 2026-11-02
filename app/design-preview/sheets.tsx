@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { EQUIP, MUSCLES, computeTarget, comfortLevel, fmtW, lastLine, levelOf, libOf, type Comfort, type LibEx } from './data';
 import { preferenceSuggestions, suggest, type Suggestion } from './adapt';
+import { can, FEATURE_TIER, STATUS, type Feature } from './entitlements';
 import { whyKey, type Ctx, type Net } from './ctx';
 import { Sheet, Stepper, Switch } from './ui';
 import { LibraryView } from './screens';
@@ -24,6 +25,7 @@ function Candidates({ c, current, taken, onChoose, note }: { c: Ctx; current: Li
   );
 }
 
+const PRO_LABEL: Record<string, string> = { 'behavior-recommendations': 'Behavior-based recommendations', 'plateau-analysis': 'Plateau identification', 'volume-adjustment': 'Volume and workout-length fit', deload: 'Deload and program adjustments', 'trend-analytics': 'Progression trend analytics', 'progression-custom': 'Custom progression rules', 'multi-program': 'Multiple switchable programs' };
 const COMFORT: { v: Comfort; t: string; d: string }[] = [
   { v: 'machines', t: 'Mostly machines', d: 'I prefer guided movements while getting comfortable.' },
   { v: 'mixed', t: 'Machines and dumbbells', d: 'I like a combination of both.' },
@@ -103,8 +105,19 @@ export function SheetHost({ c, x }: { c: Ctx; x: Extra }) {
   const close = c.close;
   switch (sh.t) {
     case 'proto': return <Sheet title="Prototype tools" onClose={close}><ProtoControls c={c} x={x} /></Sheet>;
+    case 'upgrade': return (
+      <Sheet title="Forgeload Pro" onClose={close}>
+        <div className="fl-banner off"><span>Demo only. No payment is taken and nothing is charged.</span></div>
+        <p style={{ fontWeight: 600 }}>Always free</p>
+        <p className="fl-sub">Unlimited logging and history, targets from your last session, unlimited exercise swaps, comfort preferences, suggestions to save repeated swaps, export and delete. Your data is yours on any plan.</p>
+        <p style={{ fontWeight: 600, marginTop: 6 }}>Pro adds deeper training intelligence</p>
+        {(Object.keys(FEATURE_TIER) as Feature[]).filter((f) => FEATURE_TIER[f] === 'pro').map((f) => (
+          <div key={f} className="fl-between" style={{ padding: '6px 0', borderTop: '1px solid var(--line)' }}><span>{PRO_LABEL[f]}</span><span className="fl-sub">{STATUS[f] === 'prototype' ? 'In this demo' : 'Planned'}</span></div>))}
+        <button className="fl-btn pri big" onClick={() => c.set({ tier: 'pro', sheet: null, toast: { msg: 'Pro demo on. You can switch back in Account.' } })}>Preview Pro (demo)</button>
+        <button className="fl-btn ghost" onClick={close}>Not now</button>
+      </Sheet>);
     case 'suggest': {
-      const sg = suggest({ plan: s.plan, hist: s.hist, events: s.events, dismissed: s.dismissed, comfort: s.comfort, avoid: s.avoid, planTime: s.planTime, lib: c.lib }).find((x) => x.id === sh.a);
+      const sg = suggest({ plan: s.plan, hist: s.hist, events: s.events, dismissed: s.dismissed, comfort: s.comfort, avoid: s.avoid, planTime: s.planTime, lib: c.lib }).find((x) => x.id === sh.a && (x.tier === 'free' || can(s.tier, 'plateau-analysis')));
       if (!sg) return null;
       return (
         <Sheet title="Suggestion" onClose={close}>
@@ -117,6 +130,8 @@ export function SheetHost({ c, x }: { c: Ctx; x: Extra }) {
     }
     case 'account': return (
       <Sheet title="Account and preferences" onClose={close}>
+        <div className="fl-between"><span><b>Plan</b> <span className="fl-sub">· demo state</span></span><span className="fl-chip">{c.s.tier === 'pro' ? 'Pro (demo)' : 'Free'}</span></div>
+        <Switch on={c.s.tier === 'pro'} onChange={(v) => c.set({ tier: v ? 'pro' : 'free' })}>Preview Pro features (demo, no billing)</Switch>
         <Prefs c={c} />
         <p className="fl-sub">In the real app this opens Settings: export your data, delete your account, sign out. The preview keeps those screens unchanged.</p>
         <Switch on={s.theme === 'light'} onChange={(v) => c.set({ theme: v ? 'light' : 'dark' })}>Light theme (optional)</Switch>

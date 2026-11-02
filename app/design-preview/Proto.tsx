@@ -19,7 +19,7 @@ const seed = (): State => ({
   planSave: 'saved', selDay: 0, exp: null, summary: null,
   ob: { step: 0, a: { days: 4, exp: 'some', goal: 'both', time: 60, comfort: 'unsure' } }, draftPlan: null,
   sheet: null, toast: null, fresh: false,
-  comfort: 'all', avoid: [], dismissed: [], planTime: 60, why: {}, draftWhy: {}, draftNotes: [],
+  tier: 'free', comfort: 'all', avoid: [], dismissed: [], planTime: 60, why: {}, draftWhy: {}, draftNotes: [],
   // Seed behavior: the demo user swapped Barbell Row for Seated Cable Row three times this month, so one suggestion shows on Home.
   events: [{ k: 'swap', from: 'row', to: 'cablerow', d: 3 }, { k: 'swap', from: 'row', to: 'cablerow', d: 10 }, { k: 'swap', from: 'row', to: 'cablerow', d: 17 }],
 });
@@ -184,7 +184,7 @@ export default function Proto() {
   }, [lib]);
 
   // ---- proto-only scenarios ----
-  const reset = useCallback((p?: Partial<State>) => { setS({ ...seed(), theme: sRef.current.theme, mode: sRef.current.mode, ...p }); setActs(0); actsRef.current = 0; setCosts([]); }, []);
+  const reset = useCallback((p?: Partial<State>) => { setS({ ...seed(), tier: sRef.current.tier, theme: sRef.current.theme, mode: sRef.current.mode, ...p }); setActs(0); actsRef.current = 0; setCosts([]); }, []);
   const interrupted = useCallback(() => {
     const o = seed(); const w = mkWorkout(0, o); const t = Date.now();
     const sets: SetLog[] = [1, 2, 3].map((n) => ({ id: `i-b-${n}`, peId: 'ua1', n, w: 135, r: n === 3 ? 7 : 8, status: 'saved' as const }));
@@ -192,9 +192,10 @@ export default function Proto() {
     setS({ ...o, theme: sRef.current.theme, mode: sRef.current.mode, workout: { ...w, startedAt: t - 23 * 60000, idx: 1, sets, draft: { ...w.draft, ua2: { w: '120', r: '8' } } }, screen: 'home' });
   }, [mkWorkout]);
 
-  const addEvent = useCallback((e: Ev) => setS((o) => ({ ...o, events: [e, ...(e.k === 'feel' ? o.events.filter((x) => !(x.k === 'feel' && x.ex === e.ex && x.d === 0)) : o.events)].slice(0, 200) })), []);
+  const addEvent = useCallback((e: Ev) => setS((o) => ({ ...o, avoid: e.k === 'feel' && e.v === 'notforme' && !o.avoid.includes(e.ex) ? [...o.avoid, e.ex] : o.avoid, events: [e, ...(e.k === 'feel' ? o.events.filter((x) => !(x.k === 'feel' && x.ex === e.ex && x.d === 0)) : o.events)].slice(0, 200) })), []);
   const applySug = useCallback((arg: Suggestion | Suggestion[], keepOpen?: boolean) => {
     const o = sRef.current; const list = Array.isArray(arg) ? arg : [arg]; const sg = list[0]; const ch = sg.change;
+    if (list.some((x) => x.tier === 'pro') && o.tier !== 'pro') { setS((p) => ({ ...p, sheet: { t: 'upgrade' } })); return; } // client guard only; the real check is server-side
     if (list.length > 1) {
       const prev = o.plan; const plan = list.reduce((d, x) => applyChange(d, x.change), prev);
       setS((p) => ({ ...p, plan, dismissed: [...p.dismissed, ...list.map((x) => x.id)], toast: { msg: `${list.length} exercises swapped. Your past sets are unchanged.`, undo: true, plan: prev, sug: '' } }));

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { LIB, SEED_PLAN, SEED_HIST, levelOf, type Hist } from '../app/design-preview/data.ts';
 import { suggest, preferenceSuggestions, applyChange, type AdaptIn, type Ev } from '../app/design-preview/adapt.ts';
 
-const base = (o: Partial<AdaptIn> = {}): AdaptIn => ({ plan: SEED_PLAN, hist: SEED_HIST, events: [], dismissed: [], comfort: 'all', avoid: [], planTime: 60, lib: LIB, ...o });
+const base = (o: Partial<AdaptIn> = {}): AdaptIn => ({ plan: SEED_PLAN, hist: { ...SEED_HIST, lateral: SEED_HIST.lateral.slice(0, 1) }, events: [], dismissed: [], comfort: 'all', avoid: [], planTime: 60, lib: LIB, ...o });
 const sw = (from: string, to: string, ds: number[]): Ev[] => ds.map((d) => ({ k: 'swap', from, to, d }));
 
 test('no behavior, no suggestions', () => assert.deepEqual(suggest(base()), []));
@@ -34,7 +34,7 @@ test('rule 2: three skips triggers it; one skip does not', () => {
   assert.equal(suggest(base({ events: [3, 8, 12].map((d) => ({ k: 'skip' as const, ex: 'lunge', d })) }))[0].kind, 'not-for-me');
 });
 test('rule 3: three sessions without a better top set suggests a variation, never a weight or comfort change', () => {
-  const hist: Hist = { ...SEED_HIST, ohp: [{ daysAgo: 2, sets: [{ w: 75, r: 6 }] }, { daysAgo: 9, sets: [{ w: 75, r: 6 }] }, { daysAgo: 16, sets: [{ w: 75, r: 7 }] }] };
+  const hist: Hist = { ...SEED_HIST, lateral: SEED_HIST.lateral.slice(0, 1), ohp: [{ daysAgo: 2, sets: [{ w: 75, r: 6 }] }, { daysAgo: 9, sets: [{ w: 75, r: 6 }] }, { daysAgo: 16, sets: [{ w: 75, r: 7 }] }] };
   const s = suggest(base({ hist })).filter((x) => x.kind === 'stalled');
   assert.equal(s.length, 1); assert.match(s[0].why, /Keeping this exercise is also a fine choice/);
 });

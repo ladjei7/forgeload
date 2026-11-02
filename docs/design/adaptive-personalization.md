@@ -32,6 +32,7 @@ Input: days, experience, goal, session length, comfort, optional avoid list. Out
 Tested guarantees (all days x times x goals x experience x comfort): every main movement pattern is covered across the week; each major muscle has enough weekly sets; machines-only plans have no free weights; "not sure" equals "machines and dumbbells"; barbells and pull-ups appear only at level 3; workouts fit the chosen time; no duplicates; every exercise has a reason.
 
 ## Suggestion engine (`adapt.ts`)
+Tier split (Free vs Pro) is defined in [free-vs-pro.md](free-vs-pro.md): `stalled` and `time` are Pro analysis; the rest are Free.
 Inputs are an append-only event log (swap, skip, comfort feedback), logged history, plan, comfort, avoid list, and session length.
 
 | Rule | Trigger | Proposes |

@@ -116,7 +116,8 @@ export const SEED_HIST: Hist = {
   calf: [S(4, [140, 15], [140, 15], [140, 14])],
   incdb: [S(2, [50, 10], [50, 9], [50, 8])],
   dbrow: [S(2, [55, 12], [55, 11], [55, 10])],
-  lateral: [S(2, [15, 15], [15, 14], [15, 12])],
+  // Edge: same best set for three sessions in a row (a plateau the Pro analysis can point out).
+  lateral: [S(2, [15, 13], [15, 12], [15, 12]), S(9, [15, 13], [15, 12], [15, 12]), S(16, [15, 13], [15, 12], [15, 12])],
   curl: [S(2, [25, 10], [25, 9])],
   pushdown: [S(2, [55, 12], [55, 12])],
   thrust: [S(1, [185, 10], [185, 10], [185, 9])],

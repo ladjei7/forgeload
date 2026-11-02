@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { EQUIP, MUSCLES, estMinutes, fmtW, libOf, mmss, totalSets, type Day, type LibEx, type PlanEx } from './data';
 import { whyKey, type Ctx, type Screen, type SetLog, type WEx } from './ctx';
 import { suggest } from './adapt';
+import { can } from './entitlements';
 import { FMark, Icon, Stepper, Switch } from './ui';
 import type { Extra } from './Proto';
 
@@ -46,12 +47,14 @@ export function Home({ c }: { c: Ctx }) {
   const lastAgoOf = (d: Day) => { const a = d.ex.flatMap((e) => (s.hist[e.exId]?.[0] ? [s.hist[e.exId][0].daysAgo] : [])); return a.length ? ago(Math.min(...a)) : 'not done yet'; };
   const firstT = day?.ex[0] ? c.targetOf(day.ex[0]) : null;
   const firstEx = day?.ex[0] ? libOf(c.lib, day.ex[0].exId) : null;
-  const sugs = suggest({ plan: s.plan, hist: s.hist, events: s.events, dismissed: s.dismissed, comfort: s.comfort, avoid: s.avoid, planTime: s.planTime, lib: c.lib });
+  const all = suggest({ plan: s.plan, hist: s.hist, events: s.events, dismissed: s.dismissed, comfort: s.comfort, avoid: s.avoid, planTime: s.planTime, lib: c.lib });
+  const sugs = all.filter((x) => x.tier === 'free' || can(s.tier, 'plateau-analysis'));
+  const locked = all.filter((x) => !sugs.includes(x));
   const wFailed = w?.sets.filter((x) => x.status === 'failed' || x.status === 'queued').length ?? 0;
   return (
     <div className={`fl-scr${s.back ? ' back' : ''}`} key="home">
       <div className="fl-between">
-        <div className="fl-row"><FMark size={22} /><span style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-.01em' }}>Forgeload</span></div>
+        <div className="fl-row"><FMark size={22} /><span style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-.01em' }}>Forgeload</span>{s.tier === 'pro' && <span className="fl-chip">Pro demo</span>}</div>
         <button className="fl-btn sec" style={{ width: 44, minHeight: 44, padding: 0, borderRadius: 22 }} aria-label="Account and settings" onClick={() => c.open('account')}>{Icon.user}</button>
       </div>
 
@@ -106,6 +109,14 @@ export function Home({ c }: { c: Ctx }) {
             <button className="fl-btn ghost" onClick={() => c.set({ dismissed: [...s.dismissed, sugs[0].id] })}>No thanks</button>
           </div>
         </div>
+      )}
+
+      {!w && locked.length > 0 && (
+        <button className="fl-card" style={{ textAlign: 'left', width: '100%', cursor: 'pointer' }} onClick={() => c.open('upgrade')}>
+          <p className="fl-sub">Forgeload Pro · demo</p>
+          <p style={{ margin: '4px 0 2px', fontWeight: 600 }}>{locked.length} training insight{locked.length === 1 ? '' : 's'} ready</p>
+          <p className="fl-sub">Plateau and workout-length analysis. Your logging, history and targets stay free.</p>
+        </button>
       )}
 
       <div className="fl-grid2">

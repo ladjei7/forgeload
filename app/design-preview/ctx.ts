@@ -1,5 +1,6 @@
 import type { Comfort, Day, Hist, LibEx, PlanEx, Target } from './data';
 import type { Ev, Suggestion } from './adapt';
+import type { Tier } from './entitlements';
 
 export type Screen = 'onboard' | 'review' | 'home' | 'plan' | 'workout' | 'progress' | 'library' | 'complete';
 export type Net = 'online' | 'slow' | 'fail' | 'offline';
@@ -26,6 +27,7 @@ export type State = {
   fav: string[]; recent: string[]; custom: LibEx[]; planSave: PlanSave; selDay: number; exp: string | null;
   summary: Summary | null; ob: { step: number; a: Answers }; draftPlan: Day[] | null;
   sheet: SheetState; toast: { msg: string; undo?: boolean; plan?: Day[]; sug?: string } | null; fresh: boolean;
+  tier: Tier; // DEMO state only. No billing exists; the real tier will come from the server.
   comfort: Comfort; avoid: string[]; events: Ev[]; dismissed: string[]; planTime: number;
   why: Record<string, string>; draftWhy: Record<string, string>; draftNotes: string[]; // why keys are `${planExerciseId}|${exerciseId}`, so a replaced exercise never shows an old reason
 };

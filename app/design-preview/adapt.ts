@@ -17,9 +17,11 @@ export type Change =
   | { t: 'replace'; from: string; to: string; dayIds?: string[] }
   | { t: 'remove'; dayId: string; peId: string }
   | { t: 'comfort'; to: Comfort };
-export type Suggestion = { id: string; kind: 'repeat-swap' | 'not-for-me' | 'stalled' | 'time' | 'comfort' | 'preference'; title: string; why: string; accept: string; change: Change };
+export type Suggestion = { tier: 'free' | 'pro'; id: string; kind: 'repeat-swap' | 'not-for-me' | 'stalled' | 'time' | 'comfort' | 'preference'; title: string; why: string; accept: string; change: Change };
 export type AdaptIn = { plan: Day[]; hist: Hist; events: Ev[]; dismissed: string[]; comfort: Comfort; avoid: string[]; planTime: number; lib: LibEx[] };
 
+/** Free: save repeated substitutions, honor "not for me", offer comfort options. Pro: analysis of how training is going (plateaus, volume and time fit). */
+export const PRO_KINDS: Suggestion['kind'][] = ['stalled', 'time'];
 const nm = (lib: LibEx[], id: string) => lib.find((e) => e.id === id)?.name ?? id;
 const inPlan = (plan: Day[], id: string) => plan.some((d) => d.ex.some((e) => e.exId === id));
 const times = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`);
@@ -32,7 +34,7 @@ export function alternative(exId: string, level: 1 | 2 | 3, avoid: string[], tak
 }
 
 export function suggest(i: AdaptIn): Suggestion[] {
-  const out: Suggestion[] = []; const level = comfortLevel(i.comfort);
+  const out: Omit<Suggestion, 'tier'>[] = []; const level = comfortLevel(i.comfort);
   const recent = i.events.filter((e) => e.d <= WINDOW);
 
   // 1. Repeat swap: the user keeps replacing A with B. Offer to make B the default.
@@ -93,7 +95,7 @@ export function suggest(i: AdaptIn): Suggestion[] {
         accept: 'Yes, include them', change: { t: 'comfort', to: next } });
     }
   }
-  return out.filter((s) => !i.dismissed.includes(s.id));
+  return out.filter((s) => !i.dismissed.includes(s.id)).map((s) => ({ ...s, tier: PRO_KINDS.includes(s.kind) ? 'pro' : 'free' }));
 }
 
 /** After the user changes their comfort setting: optional per-exercise swaps. Nothing is applied by this function. */
@@ -104,10 +106,10 @@ export function preferenceSuggestions(plan: Day[], comfort: Comfort, avoid: stri
     const l = levelOf(ex);
     if (l > level) {
       const alt = candidates(p, level, new Set([...avoid, ...taken]))[0]; if (!alt) continue; seen.add(pe.exId);
-      out.push({ id: `pref:${pe.exId}>${alt}`, kind: 'preference', title: `${nm(lib, pe.exId)} → ${nm(lib, alt)}`, why: `${nm(lib, alt)} suits your new comfort setting and trains the same movement.`, accept: 'Swap', change: { t: 'replace', from: pe.exId, to: alt } });
+      out.push({ tier: 'free', id: `pref:${pe.exId}>${alt}`, kind: 'preference', title: `${nm(lib, pe.exId)} → ${nm(lib, alt)}`, why: `${nm(lib, alt)} suits your new comfort setting and trains the same movement.`, accept: 'Swap', change: { t: 'replace', from: pe.exId, to: alt } });
     } else if (l < level && MAJOR.includes(p)) {
       const alt = candidates(p, level, new Set([...avoid, ...taken])).find((id) => { const e2 = lib.find((x) => x.id === id); return e2 && levelOf(e2) === level; }); if (!alt) continue; seen.add(pe.exId);
-      out.push({ id: `pref:${pe.exId}>${alt}`, kind: 'preference', title: `${nm(lib, pe.exId)} → ${nm(lib, alt)}`, why: `An option for your new comfort setting. Keep what you have if you prefer it.`, accept: 'Swap', change: { t: 'replace', from: pe.exId, to: alt } });
+      out.push({ tier: 'free', id: `pref:${pe.exId}>${alt}`, kind: 'preference', title: `${nm(lib, pe.exId)} → ${nm(lib, alt)}`, why: `An option for your new comfort setting. Keep what you have if you prefer it.`, accept: 'Swap', change: { t: 'replace', from: pe.exId, to: alt } });
     }
   }
   return out;
