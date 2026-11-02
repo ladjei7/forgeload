@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
-import { EQUIP, MUSCLES, computeTarget, fmtW, lastLine, libOf, type LibEx } from './data';
-import type { Ctx, Net } from './ctx';
+import { EQUIP, MUSCLES, computeTarget, comfortLevel, fmtW, lastLine, levelOf, libOf, type Comfort, type LibEx } from './data';
+import { preferenceSuggestions, suggest, type Suggestion } from './adapt';
+import { whyKey, type Ctx, type Net } from './ctx';
 import { Sheet, Stepper, Switch } from './ui';
 import { LibraryView } from './screens';
 import type { Extra } from './Proto';
@@ -9,10 +10,10 @@ import type { Extra } from './Proto';
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 function Candidates({ c, current, taken, onChoose, note }: { c: Ctx; current: LibEx; taken: string[]; onChoose: (e: LibEx) => void; note?: string }) {
-  const list = c.lib.filter((e) => e.muscle === current.muscle && e.id !== current.id && !taken.includes(e.id)).sort((a, b) => Number(b.equip === current.equip) - Number(a.equip === current.equip));
+  const list = c.lib.filter((e) => e.muscle === current.muscle && e.id !== current.id && !taken.includes(e.id)).sort((a, b) => Number(levelOf(b) <= comfortLevel(c.s.comfort)) - Number(levelOf(a) <= comfortLevel(c.s.comfort)) || Number(b.equip === current.equip) - Number(a.equip === current.equip));
   return (
     <>
-      <p className="fl-sub">Same muscle ({current.muscle}). Similar equipment is listed first.{note ? ` ${note}` : ''}</p>
+      <p className="fl-sub">Same muscle ({current.muscle}). Options that fit your comfort setting are listed first; everything is available.{note ? ` ${note}` : ''}</p>
       {list.length === 0 && <p>No other {current.muscle.toLowerCase()} exercises available.</p>}
       {list.map((e) => (
         <button key={e.id} className="fl-li" onClick={() => onChoose(e)}>
@@ -20,6 +21,41 @@ function Candidates({ c, current, taken, onChoose, note }: { c: Ctx; current: Li
         </button>
       ))}
     </>
+  );
+}
+
+const COMFORT: { v: Comfort; t: string; d: string }[] = [
+  { v: 'machines', t: 'Mostly machines', d: 'I prefer guided movements while getting comfortable.' },
+  { v: 'mixed', t: 'Machines and dumbbells', d: 'I like a combination of both.' },
+  { v: 'all', t: 'All gym equipment', d: 'I am comfortable with barbells, dumbbells, and machines.' },
+  { v: 'unsure', t: 'I am not sure', d: 'Choose for me.' },
+];
+/* Changing a preference never edits the plan. It only offers optional swaps that the user can accept one at a time. */
+function Prefs({ c }: { c: Ctx }) {
+  const { s } = c; const [changed, setChanged] = useState(false);
+  const offers: Suggestion[] = changed ? preferenceSuggestions(s.plan, s.comfort, s.avoid, c.lib).filter((x) => !s.dismissed.includes(x.id)) : [];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <p style={{ fontWeight: 600 }}>Exercise comfort</p>
+      <p className="fl-sub">Picks which exercises we suggest first. Your plan does not change when you pick one.</p>
+      {COMFORT.map((o) => <button key={o.v} className="fl-opt" aria-pressed={s.comfort === o.v} onClick={() => { c.set({ comfort: o.v }); setChanged(true); }}><b>{o.t}</b><span>{o.d}</span></button>)}
+      {changed && (offers.length === 0 ? <p className="fl-sub">Saved. Your plan already fits this setting.</p> : (
+        <div className="fl-card">
+          <p><b>Optional swaps for this setting</b></p>
+          <p className="fl-sub" style={{ marginTop: 2 }}>Your plan has not changed. Accept any, all, or none.</p>
+          {offers.length > 1 && <button className="fl-btn sm pri" style={{ marginTop: 8 }} onClick={() => c.applySug(offers, true)}>Swap all {offers.length}</button>}
+          {offers.map((o) => (
+            <div key={o.id} className="fl-between" style={{ padding: '8px 0', borderTop: '1px solid var(--line)', gap: 8 }}>
+              <span style={{ minWidth: 0 }}>{o.title}</span>
+              <button className="fl-btn sm sec" onClick={() => c.applySug(o, true)}>Swap</button>
+            </div>))}
+        </div>))}
+      <p style={{ fontWeight: 600, marginTop: 6 }}>Typical session length</p>
+      <div className="fl-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+        {[30, 45, 60, 90].map((m) => <button key={m} className="fl-btn sm sec" aria-pressed={s.planTime === m} style={s.planTime === m ? { borderColor: 'var(--acc)', color: 'var(--acc)' } : undefined} onClick={() => c.set({ planTime: m })}>{m} min</button>)}
+      </div>
+      <p className="fl-sub">If a workout runs longer than this, we may suggest trimming it. We never trim it ourselves.</p>
+    </div>
   );
 }
 
@@ -67,8 +103,21 @@ export function SheetHost({ c, x }: { c: Ctx; x: Extra }) {
   const close = c.close;
   switch (sh.t) {
     case 'proto': return <Sheet title="Prototype tools" onClose={close}><ProtoControls c={c} x={x} /></Sheet>;
+    case 'suggest': {
+      const sg = suggest({ plan: s.plan, hist: s.hist, events: s.events, dismissed: s.dismissed, comfort: s.comfort, avoid: s.avoid, planTime: s.planTime, lib: c.lib }).find((x) => x.id === sh.a);
+      if (!sg) return null;
+      return (
+        <Sheet title="Suggestion" onClose={close}>
+          <p style={{ fontWeight: 600, fontSize: 17 }}>{sg.title}</p>
+          <p>{sg.why}</p>
+          <p className="fl-sub">Nothing changes unless you accept. You can undo right after, and you can always change it yourself in Plan.</p>
+          <button className="fl-btn pri big" onClick={() => c.applySug(sg)}>{sg.accept}</button>
+          <button className="fl-btn ghost" onClick={() => { c.set({ dismissed: [...s.dismissed, sg.id], sheet: null }); }}>No thanks</button>
+        </Sheet>);
+    }
     case 'account': return (
-      <Sheet title="Account" onClose={close}>
+      <Sheet title="Account and preferences" onClose={close}>
+        <Prefs c={c} />
         <p className="fl-sub">In the real app this opens Settings: export your data, delete your account, sign out. The preview keeps those screens unchanged.</p>
         <Switch on={s.theme === 'light'} onChange={(v) => c.set({ theme: v ? 'light' : 'dark' })}>Light theme (optional)</Switch>
       </Sheet>);
@@ -91,7 +140,7 @@ export function SheetHost({ c, x }: { c: Ctx; x: Extra }) {
     case 'swapplan': {
       const day = s.plan[s.selDay]; const pe = day?.ex.find((e) => e.id === sh.a); if (!pe) return null; const cur = libOf(c.lib, pe.exId);
       return (<Sheet title={`Replace ${cur.name}`} onClose={close}>
-        <Candidates c={c} current={cur} taken={day.ex.map((e) => e.exId)} onChoose={(e) => { c.mutatePlan((d) => d.map((dd) => (dd.id === day.id ? { ...dd, ex: dd.ex.map((q) => (q.id === pe.id ? { ...q, exId: e.id } : q)) } : dd))); c.set({ sheet: null, toast: { msg: `Replaced with ${e.name}` } }); }} />
+        <Candidates c={c} current={cur} taken={day.ex.map((e) => e.exId)} onChoose={(e) => { c.mutatePlan((d) => d.map((dd) => (dd.id === day.id ? { ...dd, ex: dd.ex.map((q) => (q.id === pe.id ? { ...q, exId: e.id } : q)) } : dd))); c.addEvent({ k: 'swap', from: cur.id, to: e.id, d: 0 }); c.set({ sheet: null, toast: { msg: `Replaced with ${e.name}` } }); }} />
       </Sheet>);
     }
     case 'swapdraft': {
@@ -165,6 +214,7 @@ function Override({ c, weId }: { c: Ctx; weId: string }) {
 function SwapWorkout({ c, we, cur, started }: { c: Ctx; we: { id: string; exId: string; sets: number; min: number; max: number; rest: number; rir: boolean; extra: number }; cur: LibEx; started: boolean }) {
   const w = c.s.workout!; const [alsoPlan, setAlso] = useState(false);
   const choose = (e: LibEx) => {
+    c.addEvent({ k: 'swap', from: cur.id, to: e.id, d: 0 });
     const t = computeTarget(we, e, c.s.hist[e.id]); const ovr = { ...w.ovr }; delete ovr[we.id];
     c.set({ workout: { ...w, ovr, exs: w.exs.map((q) => (q.id === we.id ? { ...q, exId: e.id } : q)), draft: { ...w.draft, [we.id]: { w: fmtW(t.w), r: String(t.r) } } }, sheet: null, toast: { msg: `Swapped to ${e.name}` } });
     if (alsoPlan) c.mutatePlan((d) => d.map((dd) => (dd.id === w.dayId ? { ...dd, ex: dd.ex.map((q) => (q.id === we.id ? { ...q, exId: e.id } : q)) } : dd)));
@@ -213,13 +263,13 @@ export function ProtoControls({ c, x }: { c: Ctx; x: Extra }) {
       <div className="fl-panel"><h3>Scenarios</h3>
         <div className="seg">
           <button onClick={jump(() => x.interrupted())}>Interrupted workout</button>
-          <button onClick={jump(() => { x.reset({ screen: 'onboard', plan: [], hist: {}, lastDay: null, weekDone: [false, false, false, false, false, false, false], ob: { step: 0, a: { days: 4, exp: 'some', goal: 'both', time: 60 } } }); })}>New user</button>
+          <button onClick={jump(() => { x.reset({ screen: 'onboard', plan: [], hist: {}, lastDay: null, weekDone: [false, false, false, false, false, false, false], ob: { step: 0, a: { days: 4, exp: 'some', goal: 'both', time: 60, comfort: 'unsure' } }, why: {}, events: [], dismissed: [], comfort: 'unsure' }); })}>New user</button>
           <button onClick={jump(() => x.reset())}>Reset demo</button>
         </div>
         <div className="seg">
           <button onClick={jump(() => c.go('home'))}>Home</button><button onClick={jump(() => c.startWorkout(s.nextDay))}>Workout</button><button onClick={jump(() => c.go('plan'))}>Plan</button>
           <button onClick={jump(() => c.go('progress'))}>Progress</button><button onClick={jump(() => c.go('library'))}>Library</button>
-          <button onClick={jump(() => { c.set({ draftPlan: x.generate(s.ob.a) }); c.go('review'); })}>Plan review</button>
+          <button onClick={jump(() => { const r = x.generate(s.ob.a); c.set({ draftPlan: r.days, draftNotes: r.notes, draftWhy: Object.fromEntries(r.days.flatMap((d) => d.ex.map((e) => [whyKey(e), r.why[e.id]]))) }); c.go('review'); })}>Plan review</button>
         </div>
       </div>
       <div className="fl-panel"><h3>Interaction counter</h3>

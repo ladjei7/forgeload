@@ -2,7 +2,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './preview.css';
 import { Icon } from './ui';
-import { SEED_HIST, SEED_PLAN, LIB, computeTarget, fmtW, libOf, estMinutes, generatePlan, totalSets, type Day, type PlanEx, type Target } from './data';
+import { SEED_HIST, SEED_PLAN, LIB, computeTarget, fmtW, libOf, estMinutes, totalSets, type Day, type PlanEx, type Target } from './data';
+import { generatePlan } from './generate';
+import { applyChange, type Ev, type Suggestion } from './adapt';
 import type { Answers, Ctx, Draft, Net, Screen, SetLog, State, Summary, WEx, Workout } from './ctx';
 import { Home, Workout as WorkoutScreen, PlanScreen, Progress, LibraryScreen, Onboard, Review, Complete } from './screens';
 import { SheetHost, ProtoControls } from './sheets';
@@ -15,8 +17,11 @@ const seed = (): State => ({
   weekDone: [true, false, true, false, true, false, false], today: 6,
   workout: null, net: 'online', theme: 'dark', mode: 'list', fav: ['bench'], recent: ['bench', 'row', 'ohp'], custom: [],
   planSave: 'saved', selDay: 0, exp: null, summary: null,
-  ob: { step: 0, a: { days: 4, exp: 'some', goal: 'both', time: 60 } }, draftPlan: null,
+  ob: { step: 0, a: { days: 4, exp: 'some', goal: 'both', time: 60, comfort: 'unsure' } }, draftPlan: null,
   sheet: null, toast: null, fresh: false,
+  comfort: 'all', avoid: [], dismissed: [], planTime: 60, why: {}, draftWhy: {}, draftNotes: [],
+  // Seed behavior: the demo user swapped Barbell Row for Seated Cable Row three times this month, so one suggestion shows on Home.
+  events: [{ k: 'swap', from: 'row', to: 'cablerow', d: 3 }, { k: 'swap', from: 'row', to: 'cablerow', d: 10 }, { k: 'swap', from: 'row', to: 'cablerow', d: 17 }],
 });
 
 export default function Proto() {
@@ -167,14 +172,15 @@ export default function Proto() {
       const t = computeTarget(we, ex, hist[we.exId]);
       nextT.push({ name: ex.name, text: ex.kind === 'bodyweight' ? `${t.r} reps` : `${fmtW(t.w)} x ${t.r}` });
     });
+    const skippedEx = w.exs.filter((we) => !logs.some((x) => x.peId === we.id)).map((we) => we.exId);
     const nextDay = (w.dayIdx + 1) % o.plan.length;
     const wd = [...o.weekDone]; wd[o.today] = true;
     const summary: Summary = {
       dayName: o.plan[w.dayIdx].name, logged: logs.length, planned, skipped: Math.max(0, planned - logs.length), volume: Math.round(volume),
-      minutes: Math.max(1, Math.round((Date.now() - w.startedAt) / 60000)), highs, next: nextT,
+      minutes: Math.max(1, Math.round((Date.now() - w.startedAt) / 60000)), highs, next: nextT, exIds: w.exs.filter((we) => logs.some((x) => x.peId === we.id)).map((we) => we.exId),
       nextDayName: o.plan[nextDay].name, nextPos: nextDay + 1, total: o.plan.length, unsynced: logs.filter((x) => x.status !== 'saved').length,
     };
-    setS((p) => ({ ...p, hist, workout: null, nextDay, lastDay: w.dayIdx, weekDone: wd, summary, screen: 'complete', back: false, sheet: null }));
+    setS((p) => ({ ...p, hist, workout: null, nextDay, lastDay: w.dayIdx, weekDone: wd, summary, screen: 'complete', back: false, sheet: null, events: [...skippedEx.map((ex) => ({ k: 'skip' as const, ex, d: 0 })), ...p.events].slice(0, 200) }));
   }, [lib]);
 
   // ---- proto-only scenarios ----
@@ -186,8 +192,21 @@ export default function Proto() {
     setS({ ...o, theme: sRef.current.theme, mode: sRef.current.mode, workout: { ...w, startedAt: t - 23 * 60000, idx: 1, sets, draft: { ...w.draft, ua2: { w: '120', r: '8' } } }, screen: 'home' });
   }, [mkWorkout]);
 
-  const ctx: Ctx = { s, lib, now, go, set, open, close, toast, targetOf, startWorkout, logSet, retrySet, editDraft, stepDraft, finish, mutatePlan, retryPlanSave, acts };
-  const extra = { reset, interrupted, costs, resetActs: () => { setActs(0); actsRef.current = 0; setCosts([]); lastLogActs.current = 0; }, generate: (a: Answers) => generatePlan(a.days, a.time) };
+  const addEvent = useCallback((e: Ev) => setS((o) => ({ ...o, events: [e, ...(e.k === 'feel' ? o.events.filter((x) => !(x.k === 'feel' && x.ex === e.ex && x.d === 0)) : o.events)].slice(0, 200) })), []);
+  const applySug = useCallback((arg: Suggestion | Suggestion[], keepOpen?: boolean) => {
+    const o = sRef.current; const list = Array.isArray(arg) ? arg : [arg]; const sg = list[0]; const ch = sg.change;
+    if (list.length > 1) {
+      const prev = o.plan; const plan = list.reduce((d, x) => applyChange(d, x.change), prev);
+      setS((p) => ({ ...p, plan, dismissed: [...p.dismissed, ...list.map((x) => x.id)], toast: { msg: `${list.length} exercises swapped. Your past sets are unchanged.`, undo: true, plan: prev, sug: '' } }));
+      savePlanState(); return;
+    }
+    if (ch.t === 'comfort') { setS((p) => ({ ...p, comfort: ch.to, dismissed: [...p.dismissed, sg.id], sheet: null, toast: { msg: 'Saved. Your plan has not changed.' } })); return; }
+    const prev = o.plan; const plan = applyChange(prev, ch);
+    setS((p) => ({ ...p, plan, dismissed: [...p.dismissed, sg.id], sheet: keepOpen ? p.sheet : null, toast: { msg: 'Plan updated. Your past sets are unchanged.', undo: true, plan: prev, sug: sg.id } }));
+    savePlanState();
+  }, [savePlanState]);
+  const ctx: Ctx = { s, lib, now, addEvent, applySug, go, set, open, close, toast, targetOf, startWorkout, logSet, retrySet, editDraft, stepDraft, finish, mutatePlan, retryPlanSave, acts };
+  const extra = { reset, interrupted, costs, resetActs: () => { setActs(0); actsRef.current = 0; setCosts([]); lastLogActs.current = 0; }, generate: (a: Answers) => generatePlan(a) };
 
   const onClickCapture = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button,input,select,summary,[role=switch]')) { actsRef.current += 1; setActs(actsRef.current); }
@@ -232,7 +251,7 @@ export default function Proto() {
         {s.toast && (
           <div className="fl-toast" role="status">
             <span>{s.toast.msg}</span>
-            {s.toast.undo && <button className="fl-btn sm sec" onClick={() => { document.dispatchEvent(new CustomEvent('fl-undo')); set({ toast: null }); }}>Undo</button>}
+            {s.toast.undo && <button className="fl-btn sm sec" onClick={() => { if (s.toast?.plan) { set({ plan: s.toast.plan, dismissed: s.dismissed.filter((d) => d !== s.toast?.sug), toast: null }); retryPlanSave(); } else { document.dispatchEvent(new CustomEvent('fl-undo')); set({ toast: null }); } }}>Undo</button>}
           </div>
         )}
       </div>
@@ -240,6 +259,6 @@ export default function Proto() {
   );
 }
 export type Extra = {
-  reset: (p?: Partial<State>) => void; interrupted: () => void; costs: number[]; resetActs: () => void; generate: (a: Answers) => Day[];
+  reset: (p?: Partial<State>) => void; interrupted: () => void; costs: number[]; resetActs: () => void; generate: (a: Answers) => ReturnType<typeof generatePlan>;
 };
 export { estMinutes, totalSets };

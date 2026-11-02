@@ -37,10 +37,55 @@ export const LIB: LibEx[] = [
   { id: 'thrust', name: 'Barbell Hip Thrust', muscle: 'Glutes', equip: 'Barbell', kind: 'weight', inc: 10, startW: 95, desc: 'Drive your hips up with shoulders on a bench.' },
   { id: 'calf', name: 'Standing Calf Raise', muscle: 'Calves', equip: 'Machine', kind: 'weight', inc: 10, startW: 90, desc: 'Full stretch at the bottom, pause at the top.' },
   { id: 'plank', name: 'Cable Crunch', muscle: 'Abs', equip: 'Cable', kind: 'weight', inc: 5, startW: 50, desc: 'Curl your ribs toward your hips.' },
+  { id: 'chestpm', name: 'Machine Chest Press', muscle: 'Chest', equip: 'Machine', kind: 'weight', inc: 10, startW: 60, desc: 'Sit tall, press the handles forward on a guided path.' },
+  { id: 'incpm', name: 'Incline Machine Press', muscle: 'Chest', equip: 'Machine', kind: 'weight', inc: 10, startW: 50, desc: 'Press the handles up and forward from an inclined seat.' },
+  { id: 'dbpress', name: 'Dumbbell Bench Press', muscle: 'Chest', equip: 'Dumbbell', kind: 'weight', inc: 5, startW: 35, desc: 'Press dumbbells from chest level on a flat bench.' },
+  { id: 'shpress', name: 'Machine Shoulder Press', muscle: 'Shoulders', equip: 'Machine', kind: 'weight', inc: 10, startW: 40, desc: 'Press the handles overhead on a guided path.' },
+  { id: 'dbohp', name: 'Dumbbell Shoulder Press', muscle: 'Shoulders', equip: 'Dumbbell', kind: 'weight', inc: 5, startW: 25, desc: 'Press dumbbells overhead from shoulder height.' },
+  { id: 'mrow', name: 'Chest-Supported Machine Row', muscle: 'Back', equip: 'Machine', kind: 'weight', inc: 10, startW: 60, desc: 'Chest on the pad, pull the handles to your ribs.' },
+  { id: 'cgpd', name: 'Close-Grip Pulldown', muscle: 'Back', equip: 'Cable', kind: 'weight', inc: 5, startW: 70, desc: 'Pull a close handle to your upper chest.' },
+  { id: 'hack', name: 'Hack Squat', muscle: 'Quads', equip: 'Machine', kind: 'weight', inc: 10, startW: 90, desc: 'Squat on a guided sled with your back supported.' },
+  { id: 'gobsq', name: 'Goblet Squat', muscle: 'Quads', equip: 'Dumbbell', kind: 'weight', inc: 5, startW: 30, desc: 'Hold one dumbbell at your chest and squat deep.' },
+  { id: 'backext', name: 'Back Extension Machine', muscle: 'Hamstrings', equip: 'Machine', kind: 'weight', inc: 10, startW: 60, desc: 'Hinge at the hips on a supported machine.' },
+  { id: 'dbrdl', name: 'Dumbbell Romanian Deadlift', muscle: 'Hamstrings', equip: 'Dumbbell', kind: 'weight', inc: 5, startW: 30, desc: 'Push your hips back with dumbbells close to your legs.' },
+  { id: 'cablelat', name: 'Cable Lateral Raise', muscle: 'Shoulders', equip: 'Cable', kind: 'weight', inc: 2.5, startW: 10, desc: 'Raise the handle out to the side with steady tension.' },
+  { id: 'cablecurl', name: 'Cable Curl', muscle: 'Biceps', equip: 'Cable', kind: 'weight', inc: 5, startW: 30, desc: 'Curl the handle without swinging.' },
 ];
 
 export const MUSCLES = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Abs'];
 export const EQUIP = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight'];
+
+// ---- Curated metadata (hand-maintained; the generator and suggestion engine only trust this) ----
+export type Pattern = 'hpush' | 'vpush' | 'hpull' | 'vpull' | 'squat' | 'hinge' | 'kext' | 'kflex' | 'calf' | 'lateral' | 'reardelt' | 'biceps' | 'triceps' | 'core' | 'fly' | 'other';
+export const PATTERN: Record<string, Pattern> = {
+  bench: 'hpush', incdb: 'hpush', chestpm: 'hpush', incpm: 'hpush', dbpress: 'hpush', pushup: 'hpush', dip: 'hpush', fly: 'fly',
+  row: 'hpull', dbrow: 'hpull', cablerow: 'hpull', mrow: 'hpull',
+  pulldown: 'vpull', cgpd: 'vpull', pullup: 'vpull',
+  ohp: 'vpush', shpress: 'vpush', dbohp: 'vpush',
+  squat: 'squat', legpress: 'squat', hack: 'squat', gobsq: 'squat', lunge: 'squat',
+  rdl: 'hinge', dbrdl: 'hinge', backext: 'hinge', thrust: 'hinge',
+  legext: 'kext', legcurl: 'kflex', calf: 'calf',
+  lateral: 'lateral', cablelat: 'lateral', facepull: 'reardelt', curl: 'biceps', cablecurl: 'biceps', pushdown: 'triceps', plank: 'core',
+};
+export const patternOf = (e: LibEx): Pattern => PATTERN[e.id] ?? 'other';
+/** Comfort level an exercise needs: 1 machines and cables, 2 dumbbells and bodyweight, 3 barbells. */
+export const levelOf = (e: Pick<LibEx, 'equip'>): 1 | 2 | 3 => (e.equip === 'Barbell' ? 3 : e.equip === 'Dumbbell' || e.equip === 'Bodyweight' ? 2 : 1);
+export type Comfort = 'machines' | 'mixed' | 'all' | 'unsure';
+/** Explicit rule: "not sure" starts with machines and dumbbells for everyone. Barbells only when the user chooses them. */
+export const comfortLevel = (c: Comfort): 1 | 2 | 3 => (c === 'machines' ? 1 : c === 'all' ? 3 : 2);
+const L = (a: string[], b: string[] = a, c: string[] = b): Record<1 | 2 | 3, string[]> => ({ 1: a, 2: b, 3: c });
+/** Curated first choices per movement pattern and comfort level. Second entry is the variation used on the second workout of that pattern. */
+export const PICK: Partial<Record<Pattern, Record<1 | 2 | 3, string[]>>> = {
+  hpush: L(['chestpm', 'incpm'], ['dbpress', 'incdb'], ['bench', 'incdb']),
+  vpush: L(['shpress'], ['dbohp'], ['ohp']),
+  hpull: L(['mrow', 'cablerow'], ['dbrow', 'cablerow'], ['row', 'dbrow']),
+  vpull: L(['pulldown', 'cgpd'], ['pulldown', 'cgpd'], ['pulldown', 'pullup']),
+  squat: L(['legpress', 'hack'], ['gobsq', 'legpress'], ['squat', 'legpress']),
+  hinge: L(['backext'], ['dbrdl', 'backext'], ['rdl', 'dbrdl']),
+  kext: L(['legext']), kflex: L(['legcurl']), calf: L(['calf']), reardelt: L(['facepull']), triceps: L(['pushdown']), core: L(['plank']),
+  lateral: L(['cablelat'], ['lateral', 'cablelat']),
+  biceps: L(['cablecurl'], ['curl', 'cablecurl']),
+};
 
 export const libOf = (all: LibEx[], id: string) => all.find((e) => e.id === id) ?? all[0];
 
@@ -156,23 +201,3 @@ export const estMinutes = (ex: PlanEx[]) => {
 export const totalSets = (ex: PlanEx[]) => ex.reduce((a, e) => a + e.sets, 0);
 
 export const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`;
-
-// Onboarding plan generator (mock): templates keyed by days per week.
-export function generatePlan(days: number, minutes: number): Day[] {
-  const t = (ids: [string, number, number, number][]): PlanEx[] => ids.map(([exId, sets, min, max], i) => px(`g${exId}${i}`, exId, sets, min, max, minutes <= 45 ? 90 : 120));
-  const trim = (d: PlanEx[]) => (minutes <= 45 ? d.slice(0, 4) : d);
-  const full = (n: string, a: [string, number, number, number][]): Day => ({ id: n.toLowerCase().replace(/\W/g, ''), name: n, ex: trim(t(a)) });
-  const UA = full('Upper A', [['bench', 3, 6, 10], ['row', 3, 8, 12], ['ohp', 3, 6, 10], ['pulldown', 3, 8, 12], ['curl', 2, 8, 12]]);
-  const LA = full('Lower A', [['squat', 3, 5, 8], ['rdl', 3, 8, 10], ['legpress', 3, 10, 15], ['calf', 3, 10, 15]]);
-  const UB = full('Upper B', [['incdb', 3, 8, 12], ['dbrow', 3, 8, 12], ['lateral', 3, 12, 15], ['pushdown', 2, 10, 15], ['facepull', 2, 12, 15]]);
-  const LB = full('Lower B', [['thrust', 3, 8, 12], ['legext', 3, 10, 15], ['legcurl', 3, 10, 15], ['lunge', 2, 10, 12]]);
-  const PUSH = full('Push', [['bench', 3, 6, 10], ['ohp', 3, 6, 10], ['incdb', 3, 8, 12], ['lateral', 3, 12, 15], ['pushdown', 3, 10, 15]]);
-  const PULL = full('Pull', [['row', 3, 8, 12], ['pulldown', 3, 8, 12], ['cablerow', 3, 8, 12], ['facepull', 2, 12, 15], ['curl', 3, 8, 12]]);
-  const LEGS = full('Legs', [['squat', 3, 5, 8], ['rdl', 3, 8, 10], ['legpress', 3, 10, 15], ['legcurl', 3, 10, 15], ['calf', 3, 10, 15]]);
-  const FB = (n: string, a: [string, number, number, number][]) => full(n, a);
-  if (days <= 2) return [FB('Full Body A', [['squat', 3, 5, 8], ['bench', 3, 6, 10], ['row', 3, 8, 12], ['ohp', 2, 8, 12]]), FB('Full Body B', [['rdl', 3, 8, 10], ['incdb', 3, 8, 12], ['pulldown', 3, 8, 12], ['lateral', 2, 12, 15]])];
-  if (days === 3) return [FB('Full Body A', [['squat', 3, 5, 8], ['bench', 3, 6, 10], ['row', 3, 8, 12], ['curl', 2, 8, 12]]), FB('Full Body B', [['rdl', 3, 8, 10], ['ohp', 3, 6, 10], ['pulldown', 3, 8, 12], ['pushdown', 2, 10, 15]]), FB('Full Body C', [['legpress', 3, 10, 15], ['incdb', 3, 8, 12], ['cablerow', 3, 8, 12], ['lateral', 2, 12, 15]])];
-  if (days === 4) return [UA, LA, UB, LB];
-  if (days === 5) return [UA, LA, PUSH, PULL, LEGS];
-  return [PUSH, PULL, LEGS, { ...PUSH, id: 'push2', name: 'Push 2' }, { ...PULL, id: 'pull2', name: 'Pull 2' }, { ...LEGS, id: 'legs2', name: 'Legs 2' }];
-}

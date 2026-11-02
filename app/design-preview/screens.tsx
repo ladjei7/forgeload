@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { EQUIP, MUSCLES, estMinutes, fmtW, libOf, mmss, totalSets, type Day, type LibEx, type PlanEx } from './data';
-import type { Ctx, Screen, SetLog, WEx } from './ctx';
+import { whyKey, type Ctx, type Screen, type SetLog, type WEx } from './ctx';
+import { suggest } from './adapt';
 import { FMark, Icon, Stepper, Switch } from './ui';
 import type { Extra } from './Proto';
 
@@ -45,6 +46,7 @@ export function Home({ c }: { c: Ctx }) {
   const lastAgoOf = (d: Day) => { const a = d.ex.flatMap((e) => (s.hist[e.exId]?.[0] ? [s.hist[e.exId][0].daysAgo] : [])); return a.length ? ago(Math.min(...a)) : 'not done yet'; };
   const firstT = day?.ex[0] ? c.targetOf(day.ex[0]) : null;
   const firstEx = day?.ex[0] ? libOf(c.lib, day.ex[0].exId) : null;
+  const sugs = suggest({ plan: s.plan, hist: s.hist, events: s.events, dismissed: s.dismissed, comfort: s.comfort, avoid: s.avoid, planTime: s.planTime, lib: c.lib });
   const wFailed = w?.sets.filter((x) => x.status === 'failed' || x.status === 'queued').length ?? 0;
   return (
     <div className={`fl-scr${s.back ? ' back' : ''}`} key="home">
@@ -91,6 +93,18 @@ export function Home({ c }: { c: Ctx }) {
         <div className="fl-card" style={{ textAlign: 'center', padding: 28 }}>
           <FMark size={36} /><h2 className="fl-h2" style={{ margin: '10px 0 6px' }}>No plan yet</h2>
           <button className="fl-btn pri" onClick={() => c.go('onboard')}>Set up my plan</button>
+        </div>
+      )}
+
+      {!w && sugs[0] && (
+        <div className="fl-card" aria-label="Optional suggestion">
+          <p className="fl-sub">Suggestion · optional{sugs.length > 1 ? ` · ${sugs.length - 1} more` : ''}</p>
+          <p style={{ margin: '4px 0 2px', fontWeight: 600 }}>{sugs[0].title}</p>
+          <p className="fl-sub">{sugs[0].why.split('. ')[0]}.</p>
+          <div className="fl-row" style={{ marginTop: 10 }}>
+            <button className="fl-btn sec" onClick={() => c.open('suggest', { a: sugs[0].id })}>See why</button>
+            <button className="fl-btn ghost" onClick={() => c.set({ dismissed: [...s.dismissed, sugs[0].id] })}>No thanks</button>
+          </div>
         </div>
       )}
 
@@ -372,6 +386,7 @@ export function PlanScreen({ c }: { c: Ctx }) {
             </button>
             {open && (
               <div style={{ padding: '4px 14px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {s.why[whyKey(e)] && <p className="fl-sub"><b style={{ color: 'var(--tx)' }}>Why this exercise.</b> {s.why[whyKey(e)]}</p>}
                 <div className="fl-steps3">
                   <Stepper wide label="Sets" value={String(e.sets)} onDec={() => upd(e.id, { sets: Math.max(1, e.sets - 1) })} onInc={() => upd(e.id, { sets: Math.min(8, e.sets + 1) })} />
                   <Stepper wide label="Rest" value={mmss(e.rest)} onDec={() => upd(e.id, { rest: Math.max(30, e.rest - 15) })} onInc={() => upd(e.id, { rest: Math.min(300, e.rest + 15) })} />
@@ -489,11 +504,12 @@ export function LibraryScreen({ c }: { c: Ctx }) {
 }
 
 /* ---------- Onboarding + generated plan review ---------- */
-const QS: { k: 'days' | 'exp' | 'goal' | 'time'; q: string; help: string; opts: { v: string | number; t: string; d: string }[] }[] = [
+const QS: { k: 'days' | 'exp' | 'goal' | 'time' | 'comfort'; q: string; help: string; opts: { v: string | number; t: string; d: string }[] }[] = [
   { k: 'days', q: 'How many days a week can you train?', help: 'Pick what you can keep doing. Consistency beats ambition.', opts: [2, 3, 4, 5, 6].map((n) => ({ v: n, t: `${n} days`, d: n <= 3 ? 'Full body' : n === 4 ? 'Upper / lower' : 'Split' })) },
   { k: 'exp', q: 'How would you describe your lifting?', help: 'This sets how fast the targets move.', opts: [{ v: 'new', t: 'New to lifting', d: 'Under 6 months' }, { v: 'some', t: 'Some experience', d: '6 months to 2 years' }, { v: 'exp', t: 'Experienced', d: 'More than 2 years' }] },
   { k: 'goal', q: 'What matters most right now?', help: 'You can change this later.', opts: [{ v: 'muscle', t: 'Build muscle', d: 'More reps per set' }, { v: 'strength', t: 'Get stronger', d: 'Heavier, fewer reps' }, { v: 'both', t: 'A bit of both', d: 'Balanced' }] },
   { k: 'time', q: 'How long is a typical session?', help: 'We keep every workout within this limit.', opts: [{ v: 45, t: '45 minutes', d: '4 exercises' }, { v: 60, t: '60 minutes', d: '4 to 5 exercises' }, { v: 90, t: '90 minutes', d: '5 or more' }] },
+  { k: 'comfort', q: 'What exercises would you feel most comfortable starting with?', help: 'This only picks your starting exercises. You can change it any time, and you can swap any exercise later.', opts: [{ v: 'machines', t: 'Mostly machines', d: 'I prefer guided movements while getting comfortable.' }, { v: 'mixed', t: 'Machines and dumbbells', d: 'I like a combination of both.' }, { v: 'all', t: 'All gym equipment', d: 'I am comfortable with barbells, dumbbells, and machines.' }, { v: 'unsure', t: 'I am not sure', d: 'Choose for me.' }] },
 ];
 export function Onboard({ c, x }: { c: Ctx; x: Extra }) {
   const { ob } = c.s; const q = QS[ob.step]; const val = ob.a[q.k];
@@ -505,7 +521,7 @@ export function Onboard({ c, x }: { c: Ctx; x: Extra }) {
         <div className="fl-seg" style={{ flex: 1 }} role="img" aria-label={`Question ${ob.step + 1} of ${QS.length}`}>{QS.map((_, i) => <i key={i} className={i < ob.step ? 'd' : i === ob.step ? 'c' : ''} />)}</div>
       </div>
       <div style={{ marginTop: 6 }}>
-        {ob.step === 0 && <div className="fl-row" style={{ marginBottom: 8 }}><FMark size={28} /><span className="fl-sub">Let&apos;s build your plan in four questions</span></div>}
+        {ob.step === 0 && <div className="fl-row" style={{ marginBottom: 8 }}><FMark size={28} /><span className="fl-sub">Let&apos;s build your plan in five questions</span></div>}
         <h1 className="fl-h1" style={{ fontSize: 26 }}>{q.q}</h1>
         <p className="fl-sub" style={{ marginTop: 6 }}>{q.help}</p>
       </div>
@@ -513,8 +529,8 @@ export function Onboard({ c, x }: { c: Ctx; x: Extra }) {
         {q.opts.map((o) => <button key={String(o.v)} className="fl-opt" aria-pressed={val === o.v} onClick={() => c.set({ ob: { ...ob, a: { ...ob.a, [q.k]: o.v } } })}><b>{o.t}</b><span>{o.d}</span></button>)}
       </div>
       <div style={{ marginTop: 'auto' }}>
-        <button className="fl-btn pri big" onClick={() => { if (ob.step < QS.length - 1) setStep(ob.step + 1); else { c.set({ draftPlan: x.generate(ob.a) }); c.go('review'); } }}>{ob.step < QS.length - 1 ? 'Continue' : 'Build my plan'}</button>
-        <button className="fl-btn ghost" style={{ width: '100%', marginTop: 4 }} onClick={() => { c.set({ plan: [{ id: 'd1', name: 'Workout A', ex: [] }], hist: {}, nextDay: 0, lastDay: null, selDay: 0, fresh: true }); c.go('plan'); }}>Skip. I will build it myself</button>
+        <button className="fl-btn pri big" onClick={() => { if (ob.step < QS.length - 1) setStep(ob.step + 1); else { const r = x.generate(ob.a); c.set({ draftPlan: r.days, draftNotes: r.notes, draftWhy: Object.fromEntries(r.days.flatMap((d) => d.ex.map((e) => [whyKey(e), r.why[e.id]]))) }); c.go('review'); } }}>{ob.step < QS.length - 1 ? 'Continue' : 'Build my plan'}</button>
+        <button className="fl-btn ghost" style={{ width: '100%', marginTop: 4 }} onClick={() => { c.set({ plan: [{ id: 'd1', name: 'Workout A', ex: [] }], hist: {}, nextDay: 0, lastDay: null, selDay: 0, fresh: true, why: {}, events: [], dismissed: [], comfort: ob.a.comfort, planTime: ob.a.time }); c.go('plan'); }}>Skip. I will build it myself</button>
       </div>
     </div>
   );
@@ -534,15 +550,18 @@ export function Review({ c }: { c: Ctx }) {
         <div className="fl-row" style={{ marginTop: 10, flexWrap: 'wrap' }}>
           <span className="fl-chip">{a.exp === 'new' ? 'New to lifting' : a.exp === 'some' ? 'Some experience' : 'Experienced'}</span>
           <span className="fl-chip">up to {a.time} min</span>
+          <span className="fl-chip">{a.comfort === 'machines' ? 'Mostly machines' : a.comfort === 'mixed' ? 'Machines and dumbbells' : a.comfort === 'all' ? 'All gym equipment' : 'Machines and dumbbells (we chose)'}</span>
         </div>
+        {s.draftNotes.map((n, i) => <p key={i} className="fl-sub" style={{ marginTop: 8 }}>{n}</p>)}
       </div>
       {plan.map((d, di) => (
         <details key={d.id} className="fl-why" open={di === 0}>
           <summary><span><b>{d.name}</b> <span className="fl-sub">· {plural(d.ex.length, 'exercise')} · about {estMinutes(d.ex)} min</span></span><span className="chev" style={{ transition: 'transform .15s' }}>{Icon.chev}</span></summary>
           <div className="body" style={{ paddingTop: 0 }}>
             {d.ex.map((e) => (
-              <div key={e.id} className="fl-between" style={{ padding: '6px 0', borderTop: '1px solid var(--line)' }}>
-                <span style={{ color: 'var(--tx)' }}>{libOf(c.lib, e.exId).name}<span className="fl-sub"> · {rx(e)}</span></span>
+              <div key={e.id} className="fl-between" style={{ padding: '6px 0', borderTop: '1px solid var(--line)', alignItems: 'flex-start' }}>
+                <span style={{ color: 'var(--tx)' }}>{libOf(c.lib, e.exId).name}<span className="fl-sub"> · {rx(e)}</span>
+                  <span className="fl-sub" style={{ display: 'block', marginTop: 2 }}>{s.draftWhy[whyKey(e)] ?? 'You picked this one.'}</span></span>
                 <button className="fl-btn sm ghost" onClick={() => c.open('swapdraft', { a: d.id, b: e.id })}>Swap</button>
               </div>
             ))}
@@ -550,13 +569,34 @@ export function Review({ c }: { c: Ctx }) {
         </details>
       ))}
       <p className="fl-sub">Targets appear after your first session. Nothing is locked: you can edit every workout later.</p>
-      <button className="fl-btn pri big" onClick={() => { c.set({ plan, hist: {}, nextDay: 0, lastDay: null, weekDone: [false, false, false, false, false, false, false], selDay: 0, fresh: true, workout: null }); c.go('home'); c.toast('Plan created. Start your first workout when you are ready.'); }}>Create this plan</button>
+      <button className="fl-btn pri big" onClick={() => { c.set({ plan, why: s.draftWhy, comfort: a.comfort, avoid: [], events: [], dismissed: [], planTime: a.time, hist: {}, nextDay: 0, lastDay: null, weekDone: [false, false, false, false, false, false, false], selDay: 0, fresh: true, workout: null }); c.go('home'); c.toast('Plan created. Start your first workout when you are ready.'); }}>Create this plan</button>
       <button className="fl-btn ghost" onClick={() => c.go('onboard')}>Change my answers</button>
     </div>
   );
 }
 
 /* ---------- Workout complete ---------- */
+/* Optional comfort feedback. One tap per exercise, never required. It only shapes suggestions; it never edits the plan. */
+function Feel({ c, ids }: { c: Ctx; ids: string[] }) {
+  const [v, setV] = useState<Record<string, string>>({});
+  if (!ids.length) return null;
+  const opts: { k: 'good' | 'unsure' | 'notforme'; t: string }[] = [{ k: 'good', t: 'Comfortable' }, { k: 'unsure', t: 'Unsure' }, { k: 'notforme', t: 'Not for me' }];
+  return (
+    <div className="fl-card">
+      <b>How did these feel?</b> <span className="fl-sub">Optional</span>
+      <p className="fl-sub" style={{ marginTop: 4 }}>This only shapes suggestions. It never changes your plan.</p>
+      {ids.map((id) => (
+        <div key={id} style={{ marginTop: 10 }}>
+          <p style={{ marginBottom: 6 }}>{libOf(c.lib, id).name}</p>
+          <div className="fl-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+            {opts.map((o) => <button key={o.k} className="fl-btn sm sec" aria-pressed={v[id] === o.k} style={v[id] === o.k ? { borderColor: 'var(--acc)', color: 'var(--acc)' } : undefined} onClick={() => { setV({ ...v, [id]: o.k }); c.addEvent({ k: 'feel', ex: id, v: o.k, d: 0 }); }}>{o.t}</button>)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Complete({ c }: { c: Ctx }) {
   const m = c.s.summary; if (!m) return <div className="fl-scr"><button className="fl-btn" onClick={() => c.go('home')}>Home</button></div>;
   return (
@@ -573,6 +613,7 @@ export function Complete({ c }: { c: Ctx }) {
       </div>
       {m.highs.length > 0 && <div className="fl-card"><b>New highs</b>{m.highs.map((h, i) => <p key={i} className="fl-row" style={{ marginTop: 8, alignItems: 'flex-start' }}><FMark size={16} /><span>{h}</span></p>)}</div>}
       <div className="fl-card"><b>Next time you will aim for</b>{m.next.map((n) => <div key={n.name} className="fl-between" style={{ marginTop: 8 }}><span>{n.name}</span><b className="fl-acc">{n.text}</b></div>)}</div>
+      <Feel c={c} ids={m.exIds.slice(0, 3)} />
       <button className="fl-btn pri big" onClick={() => c.go('home')}>Done</button>
       <button className="fl-btn ghost" onClick={() => c.go('progress' as Screen)}>See progress</button>
     </div>

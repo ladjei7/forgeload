@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeTarget, SEED_PLAN, SEED_HIST, LIB, estMinutes, totalSets, libOf, generatePlan, lastLine } from '../app/design-preview/data.ts';
+import { computeTarget, SEED_PLAN, SEED_HIST, LIB, estMinutes, totalSets, libOf, lastLine } from '../app/design-preview/data.ts';
+import { generatePlan as gen } from '../app/design-preview/generate.ts';
+const generatePlan = (n: number, m: number) => gen({ days: n, exp: 'some', goal: 'both', time: m, comfort: 'mixed' }).days;
 
 const pe = (exId: string) => SEED_PLAN.flatMap((d) => d.ex).find((e) => e.exId === exId)!;
 const T = (exId: string) => computeTarget(pe(exId), libOf(LIB, exId), SEED_HIST[exId]);

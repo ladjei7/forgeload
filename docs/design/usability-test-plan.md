@@ -23,6 +23,10 @@ Their own phone, open `/design-preview` in the browser (preview URL). Real gym i
 12. Plan: make Lower A next, change sets on Row, remove an exercise and undo.
 13. Add a custom exercise and use it in a workout.
 14. Compare: do task 2 and 3 in List and in Focus (alternate order). Ask which they would use in the gym and why.
+15. Onboarding comfort question: read the fifth question aloud and pick an answer. Ask what they expect the plan to contain, then open the plan. Observe: does the plan match what they expected? Do they see the reason under each exercise? Do they open Swap anyway?
+16. Preferences: change exercise comfort from the account sheet. Ask what they expect to happen to the plan. Pass: they say nothing changes until they accept a swap.
+17. Suggestion: on Home, read the suggestion aloud in their own words and decide. Observe: do they understand why it appears, do they find No thanks and Undo?
+18. After finishing a workout, ask whether they noticed the optional "How did these feel?" card, and whether tapping it felt like a chore.
 
 ## Measures
 - Task success, time, taps (counter in Proto tools), errors, backtracks.

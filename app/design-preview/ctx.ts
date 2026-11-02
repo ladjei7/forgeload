@@ -1,4 +1,5 @@
-import type { Day, Hist, LibEx, PlanEx, Target } from './data';
+import type { Comfort, Day, Hist, LibEx, PlanEx, Target } from './data';
+import type { Ev, Suggestion } from './adapt';
 
 export type Screen = 'onboard' | 'review' | 'home' | 'plan' | 'workout' | 'progress' | 'library' | 'complete';
 export type Net = 'online' | 'slow' | 'fail' | 'offline';
@@ -10,10 +11,10 @@ export type Workout = {
   dayId: string; dayIdx: number; startedAt: number; exs: WEx[]; idx: number; sets: SetLog[];
   ovr: Record<string, { w: number; r: number }>; draft: Record<string, Draft>; restEnd: number | null; restLen: number;
 };
-export type Answers = { days: number; exp: string; goal: string; time: number };
+export type Answers = { days: number; exp: string; goal: string; time: number; comfort: Comfort };
 export type Summary = {
   dayName: string; logged: number; planned: number; skipped: number; volume: number; minutes: number;
-  highs: string[]; next: { name: string; text: string }[]; nextDayName: string; nextPos: number; total: number; unsynced: number;
+  highs: string[]; next: { name: string; text: string }[]; exIds: string[]; nextDayName: string; nextPos: number; total: number; unsynced: number;
 };
 export type SheetState = { t: string; a?: string; b?: string; n?: number } | null;
 export type PlanSave = 'saved' | 'saving' | 'failed' | 'offline';
@@ -24,7 +25,9 @@ export type State = {
   workout: Workout | null; net: Net; theme: 'dark' | 'light'; mode: 'list' | 'focus';
   fav: string[]; recent: string[]; custom: LibEx[]; planSave: PlanSave; selDay: number; exp: string | null;
   summary: Summary | null; ob: { step: number; a: Answers }; draftPlan: Day[] | null;
-  sheet: SheetState; toast: { msg: string; undo?: boolean } | null; fresh: boolean;
+  sheet: SheetState; toast: { msg: string; undo?: boolean; plan?: Day[]; sug?: string } | null; fresh: boolean;
+  comfort: Comfort; avoid: string[]; events: Ev[]; dismissed: string[]; planTime: number;
+  why: Record<string, string>; draftWhy: Record<string, string>; draftNotes: string[]; // why keys are `${planExerciseId}|${exerciseId}`, so a replaced exercise never shows an old reason
 };
 
 export type Ctx = {
@@ -46,4 +49,8 @@ export type Ctx = {
   mutatePlan: (fn: (d: Day[]) => Day[]) => void;
   retryPlanSave: () => void;
   acts: number;
+  addEvent: (e: Ev) => void;
+  applySug: (sg: Suggestion | Suggestion[], keepOpen?: boolean) => void;
 };
+
+export const whyKey = (pe: { id: string; exId: string }) => `${pe.id}|${pe.exId}`;
