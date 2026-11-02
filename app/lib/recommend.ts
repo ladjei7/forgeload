@@ -33,3 +33,33 @@ export function recommendPlan(daysPerWeek: number, experience: Experience): Rec 
     ? { primary: 'ul2', alternatives: ['ppl'], why: 'Six days a week is a lot to start with. Newer lifters usually progress well on 4 days and recover better. The 6 day plan is listed if you want it anyway.' }
     : { primary: 'ppl', alternatives: ['ppl-arnold'], why: 'Six days: push, pull, legs, repeated twice a week. A good fit if you recover well and can be consistent.' };
 }
+
+// ---- Tailoring: the goal and session length change the plan itself ----
+import type { PlanTemplate } from './templates';
+
+export type Goal = 'muscle' | 'strength' | 'both';
+export type Minutes = 45 | 60 | 90;
+
+export const GOAL_NOTE: Record<Goal, string> = {
+  muscle: 'Moderate rep ranges (about 6 to 15) across the board, the usual choice for building muscle.',
+  strength: 'Your first two lifts each day move to heavier 4 to 6 rep ranges. Everything else stays moderate.',
+  both: 'Your first lift each day moves to a heavier 5 to 8 rep range. Everything else stays moderate.',
+};
+export const TIME_NOTE: Record<Minutes, string> = {
+  45: 'Short sessions: 4 exercises a day, so each workout fits in roughly 45 minutes.',
+  60: 'The standard 5 exercises a day, roughly an hour.',
+  90: 'All the exercises in each workout, with plenty of rest between sets.',
+};
+
+export function tailorTemplate(tpl: PlanTemplate, goal: Goal, minutes: Minutes): PlanTemplate {
+  return {
+    ...tpl,
+    days: tpl.days.map(d => {
+      let ex = d.exercises.map(e => [...e] as typeof e);
+      if (goal === 'strength') ex = ex.map((e, i) => (i < 2 ? [e[0], e[1], 4, 6] : e));
+      if (goal === 'both') ex = ex.map((e, i) => (i < 1 ? [e[0], e[1], 5, 8] : e));
+      if (minutes === 45) ex = ex.slice(0, 4);
+      return { ...d, exercises: ex };
+    }),
+  };
+}

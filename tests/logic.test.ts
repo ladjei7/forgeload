@@ -134,3 +134,21 @@ test('recommendation: new lifters are not pushed to 5-6 days, but can still pick
   assert.equal(recommendPlan(5, 'new').primary, 'ul2');
   assert.deepEqual(recommendPlan(5, 'new').alternatives, ['ppl-ul']);
 });
+
+import { tailorTemplate } from '../app/lib/recommend.ts';
+test('tailoring: goal and session length change reps and exercise count, never the original', () => {
+  const base = TEMPLATES.find(t => t.id === 'ul2')!;
+  const firstBefore = JSON.stringify(base.days[0].exercises);
+  const s = tailorTemplate(base, 'strength', 45);
+  assert.equal(s.days[0].exercises.length, 4);
+  assert.deepEqual([s.days[0].exercises[0][2], s.days[0].exercises[0][3]], [4, 6]);
+  assert.deepEqual([s.days[0].exercises[1][2], s.days[0].exercises[1][3]], [4, 6]);
+  assert.equal(s.days[0].exercises[2][2], base.days[0].exercises[2][2]);
+  const b = tailorTemplate(base, 'both', 90);
+  assert.deepEqual([b.days[0].exercises[0][2], b.days[0].exercises[0][3]], [5, 8]);
+  assert.equal(b.days[0].exercises.length, base.days[0].exercises.length);
+  const m = tailorTemplate(base, 'muscle', 60);
+  assert.deepEqual(m.days, base.days);
+  assert.equal(JSON.stringify(base.days[0].exercises), firstBefore);
+  for (const d of s.days) for (const e of d.exercises) assert.ok(e[2] <= e[3] && e[1] >= 1);
+});
