@@ -1,223 +1,537 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '../lib/supabase';
+import { suggestTarget, defaultRestSeconds, type PrevSet } from '../lib/progression';
+import { nextDayId } from '../lib/rotation';
+import { localDateString } from '../lib/dates';
 
-type Exercise = {
-  id: string;
+type Plan = { id: string; name: string };
+type Day = { id: string; day_name: string; sort_order: number };
+type PlanEx = { id: string; exercise_name: string; target_sets: number; rep_min: number; rep_max: number };
+type SetRow = { weight: string; reps: string; done: boolean; setId?: string };
+type Session = { id: string; workout_day_id: string; started_at: string };
+type Prev = { sets: PrevSet[] };
+type Summary = {
+  dayName: string; minutes: number; exercises: number; sets: number; volume: number;
+  prs: { name: string; weight: number; before: number }[];
+};
+
+type HistRow = {
   exercise_name: string;
-  target_sets: number;
-  rep_min: number;
-  rep_max: number;
+  workout_sessions: { completed_at: string } | { completed_at: string }[] | null;
+  exercise_sets: { set_number: number; reps: number; weight: number }[] | null;
 };
 
-type SetLog = {
-  setNumber: number;
-  reps: string;
-  weight: string;
-};
+const LS = { plan: 'fl-plan', rest: 'fl-rest', draft: (id: string) => `fl-draft-${id}` };
 
-type WorkoutDay = {
-  id: string;
-  day_name: string;
-};
+function lsGet(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
+function lsSet(key: string, v: string | null) { try { if (v === null) localStorage.removeItem(key); else localStorage.setItem(key, v); } catch { /* storage unavailable: app still works */ } }
+
+const one = <T,>(x: T | T[] | null): T | null => (Array.isArray(x) ? x[0] ?? null : x);
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+const clean = (v: string) => v.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
 
 export default function LogPage() {
-  const [days, setDays] = useState<WorkoutDay[]>([]);
-  const [selectedDayId, setSelectedDayId] = useState('');
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sets, setSets] = useState<Record<string, SetLog[]>>({});
-  const [lastSession, setLastSession] = useState<Record<string, SetLog[]>>({});
-  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [planId, setPlanId] = useState('');
+  const [days, setDays] = useState<Day[]>([]);
+  const [dayId, setDayId] = useState('');
+  const [suggestedDayId, setSuggestedDayId] = useState('');
+  const [exercises, setExercises] = useState<PlanEx[]>([]);
+  const [prev, setPrev] = useState<Record<string, Prev>>({});
+  const [bestWeight, setBestWeight] = useState<Record<string, number>>({});
+  const [session, setSession] = useState<Session | null>(null);
+  const [rows, setRows] = useState<Record<string, SetRow[]>>({});
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState('');
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [rest, setRest] = useState<{ end: number; total: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
-  useEffect(() => {
-    loadDays();
+  const logIds = useRef<Record<string, Promise<string>>>({});
+  const pending = useRef<Set<string>>(new Set());
+  const rowsRef = useRef(rows);
+  useEffect(() => { rowsRef.current = rows; }, [rows]);
+
+  // ---------- loading ----------
+
+  const loadDayContext = useCallback(async (day: string, activeSession: Session | null) => {
+    const { data: exData } = await supabase
+      .from('plan_exercises').select('id, exercise_name, target_sets, rep_min, rep_max')
+      .eq('workout_day_id', day).order('sort_order');
+    const list = (exData ?? []) as PlanEx[];
+    setExercises(list);
+
+    // History for these exercises, from COMPLETED sessions only.
+    const prevMap: Record<string, Prev> = {};
+    const best: Record<string, number> = {};
+    if (list.length) {
+      const { data: hist } = await supabase
+        .from('exercise_logs')
+        .select('exercise_name, workout_sessions!inner(completed_at), exercise_sets(set_number, reps, weight)')
+        .in('exercise_name', list.map(e => e.exercise_name))
+        .not('workout_sessions.completed_at', 'is', null)
+        .limit(1000);
+      const byName: Record<string, { at: string; sets: HistRow['exercise_sets'] }[]> = {};
+      for (const r of (hist ?? []) as unknown as HistRow[]) {
+        const at = one(r.workout_sessions)?.completed_at ?? '';
+        (byName[r.exercise_name] ??= []).push({ at, sets: r.exercise_sets });
+        for (const s of r.exercise_sets ?? []) if (s.reps > 0) best[r.exercise_name] = Math.max(best[r.exercise_name] ?? 0, s.weight);
+      }
+      for (const [name, entries] of Object.entries(byName)) {
+        entries.sort((a, b) => b.at.localeCompare(a.at));
+        const latest = entries.find(e => (e.sets ?? []).some(s => s.reps > 0));
+        if (latest) prevMap[name] = { sets: [...(latest.sets ?? [])].sort((a, b) => a.set_number - b.set_number).map(s => ({ reps: s.reps, weight: s.weight })) };
+      }
+    }
+    setPrev(prevMap);
+    setBestWeight(best);
+
+    // Rows: empty rows for the plan, filled in from any sets already saved in this session.
+    const saved: Record<string, Record<number, { id: string; reps: number; weight: number }>> = {};
+    logIds.current = {};
+    if (activeSession) {
+      const { data: logs } = await supabase
+        .from('exercise_logs').select('id, exercise_name, exercise_sets(id, set_number, reps, weight)')
+        .eq('workout_session_id', activeSession.id);
+      for (const l of (logs ?? []) as unknown as { id: string; exercise_name: string; exercise_sets: { id: string; set_number: number; reps: number; weight: number }[] | null }[]) {
+        logIds.current[l.exercise_name] = Promise.resolve(l.id);
+        saved[l.exercise_name] = {};
+        for (const s of l.exercise_sets ?? []) saved[l.exercise_name][s.set_number] = s;
+      }
+    }
+    let drafts: Record<string, { weight: string; reps: string }[]> = {};
+    if (activeSession) { try { drafts = JSON.parse(lsGet(LS.draft(activeSession.id)) ?? '{}'); } catch { drafts = {}; } }
+    const next: Record<string, SetRow[]> = {};
+    for (const ex of list) {
+      const have = saved[ex.exercise_name] ?? {};
+      const count = Math.max(ex.target_sets, ...Object.keys(have).map(Number), 0);
+      next[ex.id] = Array.from({ length: count }, (_, i) => {
+        const s = have[i + 1];
+        if (s) return { weight: String(s.weight), reps: String(s.reps), done: true, setId: s.id };
+        const d = drafts[ex.id]?.[i];
+        return { weight: d?.weight ?? '', reps: d?.reps ?? '', done: false };
+      });
+    }
+    setRows(next);
   }, []);
 
-  async function loadDays() {
-    const { data } = await supabase
-      .from('workout_days')
-      .select('id, day_name')
-      .order('sort_order');
-    if (data) setDays(data);
-  }
-
-  async function startSession() {
-    if (!selectedDayId) return;
-    const { data: session } = await supabase
-      .from('workout_sessions')
-      .insert([{ workout_day_id: selectedDayId, session_date: new Date().toISOString().slice(0, 10) }])
-      .select().single();
-    if (!session) return;
-    setSessionId(session.id);
-
-    const { data: exData } = await supabase
-      .from('plan_exercises')
-      .select('*')
-      .eq('workout_day_id', selectedDayId)
-      .order('sort_order');
-    if (exData) {
-      setExercises(exData);
-      const initialSets: Record<string, SetLog[]> = {};
-      exData.forEach((ex: Exercise) => {
-        initialSets[ex.id] = Array.from({ length: ex.target_sets }, (_, i) => ({
-          setNumber: i + 1, reps: '', weight: ''
-        }));
-      });
-      setSets(initialSets);
-      await loadLastSession(selectedDayId, exData);
+  const loadPlanDays = useCallback(async (pid: string, preferDay?: string) => {
+    const { data: dData } = await supabase
+      .from('workout_days').select('id, day_name, sort_order').eq('plan_id', pid).order('sort_order');
+    const list = (dData ?? []) as Day[];
+    setDays(list);
+    let last: string | null = null;
+    if (list.length) {
+      const { data: done } = await supabase
+        .from('workout_sessions').select('workout_day_id')
+        .in('workout_day_id', list.map(d => d.id)).not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false }).limit(1);
+      last = (done?.[0] as { workout_day_id: string } | undefined)?.workout_day_id ?? null;
     }
-  }
+    const suggested = nextDayId(list, last) ?? '';
+    setSuggestedDayId(suggested);
+    const chosen = preferDay ?? suggested;
+    setDayId(chosen);
+    if (chosen) await loadDayContext(chosen, null);
+    else { setExercises([]); setRows({}); }
+  }, [loadDayContext]);
 
-  async function loadLastSession(dayId: string, exList: Exercise[]) {
-    const { data: sessions } = await supabase
-      .from('workout_sessions')
-      .select('id')
-      .eq('workout_day_id', dayId)
-      .order('session_date', { ascending: false })
-      .limit(2);
-    if (!sessions || sessions.length < 2) return;
-    const lastSessionId = sessions[1].id;
-    const { data: logs } = await supabase
-      .from('exercise_logs')
-      .select('id, exercise_name, exercise_sets(*)')
-      .eq('workout_session_id', lastSessionId);
-    if (!logs) return;
-    const lastData: Record<string, SetLog[]> = {};
-    exList.forEach((ex: Exercise) => {
-      const log = logs.find((l: any) => l.exercise_name === ex.exercise_name);
-      if (log && log.exercise_sets) {
-        lastData[ex.id] = log.exercise_sets.map((s: any) => ({
-          setNumber: s.set_number, reps: String(s.reps), weight: String(s.weight)
-        }));
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: pData } = await supabase.from('workout_plans').select('id, name').order('created_at');
+        const planList = (pData ?? []) as Plan[];
+        setPlans(planList);
+        const savedRest = lsGet(LS.rest);
+        if (savedRest) { try { const r = JSON.parse(savedRest); if (r.end > Date.now()) setRest(r); } catch { /* ignore */ } }
+        if (planList.length === 0) return;
+
+        // Resume an unfinished workout instead of creating a duplicate.
+        const { data: active } = await supabase
+          .from('workout_sessions').select('id, workout_day_id, started_at, workout_days(plan_id)')
+          .is('completed_at', null).order('started_at', { ascending: false }).limit(1);
+        const a = active?.[0] as unknown as (Session & { workout_days: { plan_id: string } | { plan_id: string }[] | null }) | undefined;
+        if (a) {
+          const pid = one(a.workout_days)?.plan_id ?? planList[planList.length - 1].id;
+          setPlanId(pid);
+          const { data: dData } = await supabase
+            .from('workout_days').select('id, day_name, sort_order').eq('plan_id', pid).order('sort_order');
+          setDays((dData ?? []) as Day[]);
+          const s: Session = { id: a.id, workout_day_id: a.workout_day_id, started_at: a.started_at };
+          setSession(s); setDayId(s.workout_day_id);
+          await loadDayContext(s.workout_day_id, s);
+          return;
+        }
+        const stored = lsGet(LS.plan);
+        const pid = planList.find(p => p.id === stored)?.id ?? planList[planList.length - 1].id;
+        setPlanId(pid);
+        await loadPlanDays(pid);
+      } catch {
+        setError('Could not load your workout. Check your connection and refresh.');
+      } finally {
+        setLoading(false);
       }
-    });
-    setLastSession(lastData);
+    })();
+  }, [loadDayContext, loadPlanDays]);
+
+  // Rest timer tick (elapsed-time based, so it stays correct if the tab sleeps).
+  useEffect(() => {
+    if (!rest) return;
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [rest]);
+
+  // Keep unsaved typing so a refresh doesn't lose it.
+  useEffect(() => {
+    if (!session) return;
+    const drafts: Record<string, { weight: string; reps: string }[]> = {};
+    for (const [id, rs] of Object.entries(rows)) drafts[id] = rs.map(r => (r.done ? { weight: '', reps: '' } : { weight: r.weight, reps: r.reps }));
+    lsSet(LS.draft(session.id), JSON.stringify(drafts));
+  }, [rows, session]);
+
+  // ---------- derived ----------
+
+  const targets = useMemo(() => {
+    const t: Record<string, ReturnType<typeof suggestTarget>> = {};
+    for (const ex of exercises) t[ex.id] = suggestTarget(prev[ex.exercise_name]?.sets ?? [], ex.rep_min, ex.rep_max);
+    return t;
+  }, [exercises, prev]);
+
+  const restLeft = rest ? Math.max(0, Math.ceil((rest.end - now) / 1000)) : 0;
+  const doneCount = Object.values(rows).flat().filter(r => r.done).length;
+  const dayName = days.find(d => d.id === dayId)?.day_name ?? '';
+
+  // ---------- actions ----------
+
+  function startRest(seconds: number) {
+    const r = { end: Date.now() + seconds * 1000, total: seconds };
+    setNow(Date.now()); setRest(r); lsSet(LS.rest, JSON.stringify(r));
+  }
+  function adjustRest(delta: number) {
+    if (!rest) return;
+    const r = { ...rest, end: Math.max(Date.now(), rest.end + delta * 1000) };
+    setRest(r); lsSet(LS.rest, JSON.stringify(r));
+  }
+  function stopRest() { setRest(null); lsSet(LS.rest, null); }
+
+  async function changePlan(pid: string) {
+    setPlanId(pid); lsSet(LS.plan, pid); setShowPicker(false);
+    await loadPlanDays(pid);
+  }
+  async function changeDay(id: string) {
+    setDayId(id); setShowPicker(false);
+    await loadDayContext(id, null);
   }
 
-  async function saveSet(exerciseId: string, exerciseName: string, setIndex: number) {
-    if (!sessionId) return;
-    const set = sets[exerciseId][setIndex];
-    if (!set.reps || !set.weight) return;
-
-    let { data: logData } = await supabase
-      .from('exercise_logs')
-      .select('id')
-      .eq('workout_session_id', sessionId)
-      .eq('exercise_name', exerciseName)
-      .single();
-
-    if (!logData) {
-      const ex = exercises.find(e => e.id === exerciseId);
-      const { data: newLog } = await supabase
-        .from('exercise_logs')
-        .insert([{
-          workout_session_id: sessionId,
-          exercise_name: exerciseName,
-          target_sets: ex?.target_sets,
-          target_rep_min: ex?.rep_min,
-          target_rep_max: ex?.rep_max
-        }])
-        .select().single();
-      logData = newLog;
+  async function startWorkout() {
+    if (starting || !dayId) return;
+    setStarting(true); setError('');
+    try {
+      // Re-check for an unfinished session (double-tap, second device) before creating another.
+      const { data: existing } = await supabase
+        .from('workout_sessions').select('id, workout_day_id, started_at')
+        .is('completed_at', null).order('started_at', { ascending: false }).limit(1);
+      let s = existing?.[0] as Session | undefined;
+      if (!s) {
+        const { data, error: err } = await supabase
+          .from('workout_sessions').insert([{ workout_day_id: dayId, session_date: localDateString() }])
+          .select('id, workout_day_id, started_at').single();
+        if (err || !data) throw err ?? new Error('no session');
+        s = data as Session;
+      }
+      setSession(s); setDayId(s.workout_day_id);
+      await loadDayContext(s.workout_day_id, s);
+    } catch {
+      setError('Could not start the workout. Check your connection and try again.');
+    } finally {
+      setStarting(false);
     }
-
-    if (!logData) return;
-    await supabase.from('exercise_sets').insert([{
-      exercise_log_id: logData.id,
-      set_number: setIndex + 1,
-      reps: parseInt(set.reps),
-      weight: parseFloat(set.weight),
-      completed: true
-    }]);
-    setMessage('Set saved!');
-    setTimeout(() => setMessage(''), 2000);
   }
 
-  function updateSet(exerciseId: string, setIndex: number, field: 'reps' | 'weight', value: string) {
-    setSets(prev => ({
-      ...prev,
-      [exerciseId]: prev[exerciseId].map((s, i) => i === setIndex ? { ...s, [field]: value } : s)
-    }));
+  function ensureLog(ex: PlanEx): Promise<string> {
+    const existing = logIds.current[ex.exercise_name];
+    if (existing) return existing;
+    const p = (async () => {
+      const { data, error: err } = await supabase.from('exercise_logs').insert([{
+        workout_session_id: session!.id, exercise_name: ex.exercise_name,
+        target_sets: ex.target_sets, target_rep_min: ex.rep_min, target_rep_max: ex.rep_max,
+      }]).select('id').single();
+      if (err || !data) { delete logIds.current[ex.exercise_name]; throw err ?? new Error('no log'); }
+      return (data as { id: string }).id;
+    })();
+    logIds.current[ex.exercise_name] = p;
+    return p;
+  }
+
+  function setRow(exId: string, i: number, patch: Partial<SetRow>) {
+    setRows(r => ({ ...r, [exId]: r[exId].map((row, idx) => (idx === i ? { ...row, ...patch } : row)) }));
+  }
+
+  async function toggleSet(ex: PlanEx, i: number) {
+    if (!session) return;
+    const key = `${ex.id}:${i}`;
+    if (pending.current.has(key)) return; // ignore repeated taps while saving
+    pending.current.add(key);
+    setError('');
+    try {
+      const row = rowsRef.current[ex.id][i];
+      if (row.done) {
+        if (row.setId) {
+          const { error: err } = await supabase.from('exercise_sets').delete().eq('id', row.setId);
+          if (err) throw err;
+        }
+        setRow(ex.id, i, { done: false, setId: undefined });
+        return;
+      }
+      // Fast path: an empty box means "use the suggested number".
+      const t = targets[ex.id];
+      const p = prev[ex.exercise_name]?.sets[i] ?? prev[ex.exercise_name]?.sets.at(-1);
+      const weightStr = row.weight !== '' ? row.weight : t.weight !== null ? String(t.weight) : p ? String(p.weight) : '';
+      const repsStr = row.reps !== '' ? row.reps : t.reps !== null ? String(t.reps) : '';
+      const weight = parseFloat(weightStr), reps = parseInt(repsStr, 10);
+      if (!Number.isFinite(weight) || !Number.isFinite(reps) || reps <= 0) {
+        setError(`Enter weight and reps for ${ex.exercise_name} set ${i + 1}.`);
+        return;
+      }
+      const logId = await ensureLog(ex);
+      let setId = row.setId;
+      if (setId) {
+        const { error: err } = await supabase.from('exercise_sets').update({ reps, weight, completed: true }).eq('id', setId);
+        if (err) throw err;
+      } else {
+        const { data, error: err } = await supabase.from('exercise_sets')
+          .insert([{ exercise_log_id: logId, set_number: i + 1, reps, weight, completed: true }]).select('id').single();
+        if (err || !data) throw err ?? new Error('no set');
+        setId = (data as { id: string }).id;
+      }
+      setRow(ex.id, i, { weight: String(weight), reps: String(reps), done: true, setId });
+      startRest(defaultRestSeconds(ex.rep_max));
+    } catch {
+      setError('That set did not save. Check your connection and tap the check again. Your numbers are still here.');
+    } finally {
+      pending.current.delete(key);
+    }
+  }
+
+  function addSet(ex: PlanEx) {
+    setRows(r => ({ ...r, [ex.id]: [...r[ex.id], { weight: '', reps: '', done: false }] }));
+  }
+  function removeLastSet(ex: PlanEx) {
+    setRows(r => {
+      const rs = r[ex.id];
+      if (rs.length <= 1 || rs[rs.length - 1].done) return r;
+      return { ...r, [ex.id]: rs.slice(0, -1) };
+    });
+  }
+
+  async function discardWorkout() {
+    if (!session) return;
+    try {
+      const { data: logs } = await supabase.from('exercise_logs').select('id').eq('workout_session_id', session.id);
+      const ids = (logs ?? []).map(l => (l as { id: string }).id);
+      if (ids.length) await supabase.from('exercise_sets').delete().in('exercise_log_id', ids);
+      await supabase.from('exercise_logs').delete().eq('workout_session_id', session.id);
+      const { error: err } = await supabase.from('workout_sessions').delete().eq('id', session.id);
+      if (err) throw err;
+      lsSet(LS.draft(session.id), null); stopRest();
+      setSession(null); await loadPlanDays(planId);
+    } catch {
+      setError('Could not discard the workout. Try again.');
+    }
+  }
+
+  async function finishWorkout() {
+    if (!session) return;
+    if (doneCount === 0) {
+      if (confirm('No sets are logged. Discard this workout?')) await discardWorkout();
+      return;
+    }
+    const unchecked = Object.values(rows).flat().length - doneCount;
+    if (unchecked > 0 && !confirm(`${unchecked} set${unchecked === 1 ? '' : 's'} not checked off will be skipped. Finish workout?`)) return;
+    try {
+      const { error: err } = await supabase.from('workout_sessions')
+        .update({ completed_at: new Date().toISOString() }).eq('id', session.id);
+      if (err) throw err;
+    } catch {
+      setError('Could not finish the workout. Your sets are saved. Check your connection and try again.');
+      return;
+    }
+    // Summary. Volume is plain weight x reps; it is not a measure of strength or muscle gain.
+    let sets = 0, volume = 0, exCount = 0;
+    const prs: Summary['prs'] = [];
+    for (const ex of exercises) {
+      const done = (rows[ex.id] ?? []).filter(r => r.done);
+      if (!done.length) continue;
+      exCount++; sets += done.length;
+      let top = 0;
+      for (const r of done) { volume += parseFloat(r.weight) * parseInt(r.reps, 10); top = Math.max(top, parseFloat(r.weight)); }
+      const before = bestWeight[ex.exercise_name];
+      if (before !== undefined && top > before) prs.push({ name: ex.exercise_name, weight: top, before });
+    }
+    const minutes = Math.max(1, Math.round((Date.now() - new Date(session.started_at).getTime()) / 60000));
+    setSummary({ dayName, minutes, exercises: exCount, sets, volume: Math.round(volume), prs });
+    lsSet(LS.draft(session.id), null); stopRest();
+    setSession(null);
+    await loadPlanDays(planId);
+  }
+
+  // ---------- render ----------
+
+  const card = 'rounded-2xl bg-[#111] p-4';
+  const inputCls = 'h-12 w-full min-w-0 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] text-center text-lg tabular-nums text-white outline-none placeholder:text-[#555] focus:border-green-400 focus-visible:ring-2 focus-visible:ring-green-400/50 disabled:opacity-60';
+
+  if (loading) return <main className="mx-auto max-w-xl px-4 pt-6 text-white"><p className="text-[#777]">Loading your workout...</p></main>;
+
+  if (summary) {
+    return (
+      <main className="mx-auto max-w-xl px-4 pb-28 pt-6 text-white">
+        <h1 className="mb-1 text-3xl font-bold">Workout done</h1>
+        <p className="mb-6 text-[#888]">{summary.dayName}</p>
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          {[['Time', `${summary.minutes} min`], ['Exercises', String(summary.exercises)], ['Sets', String(summary.sets)], ['Volume', `${summary.volume.toLocaleString()} lb`]].map(([k, v]) => (
+            <div key={k} className={card}><div className="text-xs uppercase tracking-wide text-[#777]">{k}</div><div className="text-2xl font-bold tabular-nums">{v}</div></div>
+          ))}
+        </div>
+        <p className="mb-4 text-xs text-[#666]">Volume is weight x reps added up. It helps you compare like with like, but it is not a direct measure of strength or muscle gain.</p>
+        {summary.prs.length > 0 && (
+          <div className={`${card} mb-4`}>
+            <div className="mb-2 font-bold text-green-400">Heaviest weight yet</div>
+            {summary.prs.map(p => <div key={p.name} className="text-sm">{p.name}: {p.weight} lb <span className="text-[#777]">(was {p.before})</span></div>)}
+          </div>
+        )}
+        <button onClick={() => setSummary(null)} className="h-12 w-full rounded-xl bg-white text-base font-bold text-black">Done</button>
+      </main>
+    );
+  }
+
+  if (plans.length === 0 || days.length === 0) {
+    return (
+      <main className="mx-auto max-w-xl px-4 pt-6 text-white">
+        <h1 className="mb-4 text-3xl font-bold">Log</h1>
+        <div className={card}>
+          <p className="mb-4 text-[#bbb]">{plans.length === 0 ? 'You do not have a plan yet.' : 'This plan has no workouts yet.'} Pick a template or build your own, then come back to log.</p>
+          <Link href="/plan" className="flex h-12 items-center justify-center rounded-xl bg-white font-bold text-black">Go to Plan</Link>
+        </div>
+        {error && <p role="alert" className="mt-4 text-sm text-red-400">{error}</p>}
+      </main>
+    );
   }
 
   return (
-    <main style={{ minHeight: '100vh', background: '#000', color: '#fff', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Log Workout</h1>
-
-      {!sessionId ? (
-        <div style={{ background: '#111', borderRadius: '12px', padding: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '1rem' }}>Select Today's Day</h2>
-          <select
-            value={selectedDayId}
-            onChange={e => setSelectedDayId(e.target.value)}
-            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #333', background: '#1a1a1a', color: '#fff', fontSize: '16px', marginBottom: '0.75rem' }}
-          >
-            <option value=''>Choose your workout day...</option>
-            {days.map(day => (
-              <option key={day.id} value={day.id}>{day.day_name}</option>
-            ))}
-          </select>
-          <button
-            onClick={startSession}
-            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: '#fff', color: '#000', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', border: 'none' }}
-          >
-            Start Session
-          </button>
+    <main className="mx-auto max-w-xl px-4 pb-44 pt-4 text-white">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs uppercase tracking-wide text-[#777]">{session ? 'Workout in progress' : dayId === suggestedDayId ? 'Up next' : 'Selected workout'}</div>
+          <h1 className="truncate text-3xl font-bold">{dayName}</h1>
+          <div className="text-sm text-[#777]">{plans.find(p => p.id === planId)?.name} · workout {days.findIndex(d => d.id === dayId) + 1} of {days.length}</div>
         </div>
-      ) : (
-        <div>
-          {exercises.map(ex => (
-            <div key={ex.id} style={{ background: '#111', borderRadius: '12px', padding: '1.5rem', marginBottom: '1rem' }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>{ex.exercise_name}</h2>
-              <p style={{ color: '#666', fontSize: '14px', marginBottom: '1rem' }}>
-                Target: {ex.target_sets} sets × {ex.rep_min}-{ex.rep_max} reps
-              </p>
+        {session && <button onClick={finishWorkout} className="h-11 shrink-0 rounded-xl bg-green-400 px-4 font-bold text-black">Finish</button>}
+      </div>
 
-              {lastSession[ex.id] && (
-                <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem' }}>
-                  <p style={{ color: '#888', fontSize: '12px', marginBottom: '0.5rem' }}>LAST SESSION</p>
-                  {lastSession[ex.id].map(s => (
-                    <p key={s.setNumber} style={{ color: '#555', fontSize: '13px' }}>
-                      Set {s.setNumber}: {s.weight} lbs × {s.reps} reps
-                    </p>
-                  ))}
-                </div>
+      {error && <div role="alert" className="mb-4 rounded-xl bg-[#2a1111] p-3 text-sm text-red-300">{error}</div>}
+
+      {!session && (
+        <div className="mb-4">
+          <button onClick={startWorkout} disabled={starting || exercises.length === 0} className="h-14 w-full rounded-2xl bg-white text-lg font-bold text-black disabled:opacity-50">
+            {starting ? 'Starting...' : exercises.length === 0 ? 'No exercises in this workout' : 'Start workout'}
+          </button>
+          <button onClick={() => setShowPicker(v => !v)} className="mt-3 w-full text-sm text-[#888] underline-offset-2 hover:underline">Choose a different workout</button>
+          {showPicker && (
+            <div className={`${card} mt-3 space-y-3`}>
+              {plans.length > 1 && (
+                <label className="block text-xs text-[#888]">Plan
+                  <select value={planId} onChange={e => changePlan(e.target.value)} className={`${inputCls} mt-1 text-base`}>
+                    {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </label>
               )}
-
-              {sets[ex.id]?.map((set, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '40px 1fr 1fr auto', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-                  <span style={{ color: '#666', fontSize: '14px' }}>S{set.setNumber}</span>
-                  <input
-                    type="number"
-                    placeholder="lbs"
-                    value={set.weight}
-                    onChange={e => updateSet(ex.id, i, 'weight', e.target.value)}
-                    style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid #333', background: '#1a1a1a', color: '#fff', fontSize: '16px' }}
-                  />
-                  <input
-                    type="number"
-                    placeholder="reps"
-                    value={set.reps}
-                    onChange={e => updateSet(ex.id, i, 'reps', e.target.value)}
-                    style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid #333', background: '#1a1a1a', color: '#fff', fontSize: '16px' }}
-                  />
-                  <button
-                    onClick={() => saveSet(ex.id, ex.exercise_name, i)}
-                    style={{ padding: '0.75rem', borderRadius: '8px', background: '#4ade80', color: '#000', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', border: 'none' }}
-                  >
-                    ✓
-                  </button>
-                </div>
-              ))}
+              <label className="block text-xs text-[#888]">Workout
+                <select value={dayId} onChange={e => changeDay(e.target.value)} className={`${inputCls} mt-1 text-base`}>
+                  {days.map(d => <option key={d.id} value={d.id}>{d.day_name}{d.id === suggestedDayId ? ' (up next)' : ''}</option>)}
+                </select>
+              </label>
             </div>
-          ))}
+          )}
         </div>
       )}
 
-      {message && (
-        <div style={{ position: 'fixed', bottom: '2rem', left: '50%', transform: 'translateX(-50%)', background: '#4ade80', color: '#000', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold' }}>
-          {message}
+      {exercises.map(ex => {
+        const t = targets[ex.id];
+        const p = prev[ex.exercise_name];
+        const rs = rows[ex.id] ?? [];
+        return (
+          <section key={ex.id} className={`${card} mb-3`}>
+            <h2 className="text-lg font-bold">{ex.exercise_name}</h2>
+            <div className="text-sm text-[#777]">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} reps</div>
+            <details className="mb-3 mt-2 rounded-xl bg-[#1a1a1a] px-3 py-2">
+              <summary className="cursor-pointer list-none text-sm">
+                <span className="text-[#888]">Target </span>
+                <span className="font-semibold text-green-400">
+                  {t.action === 'start' ? `Find a ${ex.rep_min}-${ex.rep_max} rep weight` : `${t.weight !== null ? `${t.weight} lb` : 'add load'} × ${t.reps}`}
+                </span>
+                <span className="ml-2 text-xs text-[#666] underline">why?</span>
+              </summary>
+              <p className="mt-2 text-xs leading-relaxed text-[#aaa]">{t.reason}</p>
+            </details>
+
+            <div className="mb-1 grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] gap-2 text-center text-[11px] uppercase tracking-wide text-[#666]">
+              <span>Set</span><span>Previous</span><span>Lb</span><span>Reps</span><span className="sr-only">Done</span>
+            </div>
+            {rs.map((r, i) => {
+              const pv = p?.sets[i] ?? p?.sets.at(-1);
+              return (
+                <div key={i} className="mb-2 grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] items-center gap-2">
+                  <span className="text-center text-sm text-[#777]">{i + 1}</span>
+                  <span className="truncate text-center text-xs tabular-nums text-[#777]">{pv ? `${pv.weight}×${pv.reps}` : '-'}</span>
+                  <input
+                    aria-label={`${ex.exercise_name} set ${i + 1} weight in pounds`}
+                    inputMode="decimal" disabled={!session} value={r.weight}
+                    placeholder={t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
+                    onChange={e => setRow(ex.id, i, { weight: clean(e.target.value) })}
+                    className={`${inputCls} ${r.done ? 'border-green-400/40 bg-green-400/10' : ''}`}
+                  />
+                  <input
+                    aria-label={`${ex.exercise_name} set ${i + 1} reps`}
+                    inputMode="numeric" disabled={!session} value={r.reps}
+                    placeholder={t.reps !== null ? String(t.reps) : ''}
+                    onChange={e => setRow(ex.id, i, { reps: e.target.value.replace(/\D/g, '') })}
+                    className={`${inputCls} ${r.done ? 'border-green-400/40 bg-green-400/10' : ''}`}
+                  />
+                  <button
+                    aria-label={r.done ? `Undo set ${i + 1}` : `Log set ${i + 1}`} aria-pressed={r.done}
+                    disabled={!session} onClick={() => toggleSet(ex, i)}
+                    className={`h-12 w-12 rounded-xl text-xl font-bold disabled:opacity-40 ${r.done ? 'bg-green-400 text-black' : 'bg-[#242424] text-[#888]'}`}
+                  >✓</button>
+                </div>
+              );
+            })}
+            {session && (
+              <div className="mt-1 flex gap-4 text-sm">
+                <button onClick={() => addSet(ex)} className="text-[#aaa] underline-offset-2 hover:underline">+ Add set</button>
+                {rs.length > 1 && !rs[rs.length - 1].done && <button onClick={() => removeLastSet(ex)} className="text-[#666] underline-offset-2 hover:underline">Remove last set</button>}
+              </div>
+            )}
+          </section>
+        );
+      })}
+
+      {session && (
+        <button onClick={() => { if (confirm('Discard this workout and everything logged in it?')) discardWorkout(); }} className="mt-2 w-full py-3 text-sm text-red-400/80">Discard workout</button>
+      )}
+
+      {rest && (
+        <div role="timer" aria-live="off" className="fixed inset-x-0 bottom-[78px] z-50 mx-auto flex max-w-xl items-center gap-3 rounded-2xl border border-[#2a2a2a] bg-[#1c1c1c] p-3 shadow-lg" style={{ width: 'calc(100% - 1.5rem)' }}>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] uppercase tracking-wide text-[#777]">{restLeft === 0 ? 'Rest over' : 'Rest'}</div>
+            <div className={`text-3xl font-bold tabular-nums ${restLeft === 0 ? 'text-green-400' : ''}`}>{mmss(restLeft)}</div>
+          </div>
+          <button onClick={() => adjustRest(-15)} className="h-11 rounded-xl bg-[#2a2a2a] px-3 text-sm">-15s</button>
+          <button onClick={() => adjustRest(15)} className="h-11 rounded-xl bg-[#2a2a2a] px-3 text-sm">+15s</button>
+          <button onClick={stopRest} className="h-11 rounded-xl bg-white px-4 text-sm font-bold text-black">{restLeft === 0 ? 'Close' : 'Skip'}</button>
         </div>
       )}
     </main>

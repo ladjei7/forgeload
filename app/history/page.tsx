@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { parseLocalDate } from '../lib/dates';
 
 type SetData = {
   set_number: number;
@@ -52,7 +53,8 @@ export default function HistoryPage() {
           )
         )
       `)
-      .order('session_date', { ascending: false })
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false })
       .limit(20);
 
     if (data) setSessions(data as any);
@@ -90,7 +92,7 @@ export default function HistoryPage() {
                 {session.workout_days?.day_name ?? 'Workout'}
               </h2>
               <p style={{ color: '#666', fontSize: '13px' }}>
-                {new Date(session.session_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                {parseLocalDate(session.session_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
               </p>
             </div>
           </div>
