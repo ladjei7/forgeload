@@ -31,6 +31,8 @@ export default function ExercisePicker({
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const reqId = useRef(0);
+  const showFiltersRef = useRef(false);
+  useEffect(() => { showFiltersRef.current = showFilters; }, [showFilters]);
   const loadedShortcuts = useRef(false);
 
   const q = value.trim();
@@ -72,9 +74,11 @@ export default function ExercisePicker({
     const name = value.trim();
     if (!name || saving) return;
     setSaving(true);
-    // user_id defaults to the signed-in user in the database.
+    const { data: sess } = await supabase.auth.getSession();
+    const uid = sess.session?.user.id;
+    if (!uid) { setSaving(false); setFailed(true); return; }
     const { data, error } = await supabase
-      .from('exercises').insert([{ name, muscle_group: muscle || 'Other', equipment: equip || 'Other' }]).select('id').single();
+      .from('exercises').insert([{ user_id: uid, name, muscle_group: muscle || 'Other', equipment: equip || 'Other' }]).select('id').single();
     setSaving(false);
     if (error || !data) { setFailed(true); return; }
     onPick?.({ id: (data as { id: string }).id, name });
@@ -104,7 +108,7 @@ export default function ExercisePicker({
           value={value}
           onChange={e => { onChange(e.target.value); onPick?.(null); setOpen(true); }}
           onFocus={openList}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onBlur={() => setTimeout(() => { if (!showFiltersRef.current) setOpen(false); }, 150)}
           style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '0.75rem', borderRadius: '8px', border: '1px solid #333', background: '#1a1a1a', color: '#fff', fontSize: '16px' }}
         />
         <button
@@ -117,7 +121,7 @@ export default function ExercisePicker({
       </div>
       {open && (searching || showFilters || favorites.length > 0 || recents.length > 0) && (
         <div
-          onMouseDown={e => e.preventDefault()}
+          onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT') e.preventDefault(); }}
           style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', marginTop: '4px', zIndex: 50, overflow: 'hidden' }}
         >
           {showFilters && (

@@ -25,9 +25,10 @@ export function useFacets() {
 
 export function clearFacetCache() { cache = null; }
 
-const chip = (on: boolean) =>
-  `shrink-0 rounded-full border px-3 py-1.5 text-sm ${on ? 'border-white bg-white text-black' : 'border-[#333] bg-[#1a1a1a] text-white'}`;
+const sel = (on: boolean) =>
+  `h-11 min-w-0 flex-1 rounded-xl border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-green-400/50 ${on ? 'border-green-400 bg-green-400/10 text-white' : 'border-[#333] bg-[#1a1a1a] text-[#ccc]'}`;
 
+// Two compact dropdowns (scrollable lists) instead of rows of chips.
 export default function ExerciseFilters({
   muscle, equip, onMuscle, onEquip,
 }: {
@@ -35,27 +36,16 @@ export default function ExerciseFilters({
   onMuscle: (v: string) => void; onEquip: (v: string) => void;
 }) {
   const { muscles, equipment } = useFacets();
-  const row = 'flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]';
   return (
-    <div className="mb-2">
-      <div className="mb-1 text-[11px] uppercase tracking-wide text-[#777]">Muscle</div>
-      <div className={row} role="group" aria-label="Filter by muscle">
-        {muscles.map(f => (
-          <button key={f.value} type="button" aria-pressed={muscle === f.value}
-            onMouseDown={e => e.preventDefault()} onClick={() => onMuscle(muscle === f.value ? '' : f.value)} className={chip(muscle === f.value)}>
-            {f.value}
-          </button>
-        ))}
-      </div>
-      <div className="mb-1 mt-1 text-[11px] uppercase tracking-wide text-[#777]">Equipment</div>
-      <div className={row} role="group" aria-label="Filter by equipment">
-        {equipment.map(f => (
-          <button key={f.value} type="button" aria-pressed={equip === f.value}
-            onMouseDown={e => e.preventDefault()} onClick={() => onEquip(equip === f.value ? '' : f.value)} className={chip(equip === f.value)}>
-            {f.value}
-          </button>
-        ))}
-      </div>
+    <div className="mb-3 flex gap-2">
+      <select aria-label="Filter by muscle" value={muscle} onChange={e => onMuscle(e.target.value)} className={sel(!!muscle)}>
+        <option value="">All muscles</option>
+        {muscles.map(f => <option key={f.value} value={f.value}>{f.value} ({f.n})</option>)}
+      </select>
+      <select aria-label="Filter by equipment" value={equip} onChange={e => onEquip(e.target.value)} className={sel(!!equip)}>
+        <option value="">All equipment</option>
+        {equipment.map(f => <option key={f.value} value={f.value}>{f.value} ({f.n})</option>)}
+      </select>
     </div>
   );
 }

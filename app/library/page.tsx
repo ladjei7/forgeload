@@ -126,6 +126,9 @@ export default function LibraryPage() {
       const { data: dupes } = await supabase.rpc('search_exercises', { q: name, lim: 10 });
       const clash = ((dupes ?? []) as Ex[]).find(d => norm(d.name) === norm(name) && d.id !== form.id);
       if (clash) { setFormError(`"${clash.name}" already exists. Search for it instead of creating a copy.`); return; }
+      const { data: sess } = await supabase.auth.getSession();
+      const uid = sess.session?.user.id;
+      if (!uid) throw new Error('You are signed out. Sign in again.');
       const row = {
         name, muscle_group: form.muscle, equipment: form.equipment,
         tracking_type: form.tracking, load_convention: form.load,
@@ -134,7 +137,7 @@ export default function LibraryPage() {
       };
       const { error: err } = form.id
         ? await supabase.from('exercises').update(row).eq('id', form.id)
-        : await supabase.from('exercises').insert([row]);
+        : await supabase.from('exercises').insert([{ ...row, user_id: uid }]);
       if (err) throw err;
       clearFacetCache();
       setNote(form.id ? 'Saved.' : `Created "${name}".`);
