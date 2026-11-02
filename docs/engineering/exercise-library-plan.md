@@ -25,7 +25,7 @@ Date: 2026-11-02. Requirements: `docs/product/exercise-library-addendum.md`. Sta
 
 ## 3. Source comparison
 
-Facts below come from the repo pages (2026-11-02). **I could not read RepDB's full `LICENSE-DATA.md`** (blocked in this environment), so its terms are a summary only. This is not legal advice.
+Facts below come from the repo pages (2026-11-02). RepDB's full free-tier license (v1.0) was supplied by the owner and is reviewed in section 6. This is not legal advice.
 
 | | RepDB (free) | Free Exercise DB | wger |
 |---|---|---|---|
@@ -55,8 +55,25 @@ Facts below come from the repo pages (2026-11-02). **I could not read RepDB's fu
 - Progression targets stay weight x reps only until tracking-type-aware logic exists.
 - The Phase 1 Log page needs no rework; it will switch from name to id matching when ids land.
 
-## 6. Decisions and inputs needed from you
+## 6. RepDB free license (v1.0) review
 
-1. Paste or send the full RepDB `LICENSE-DATA.md` (or approve me reading it another way), so the license check can be completed.
-2. Approve the source strategy above, or choose another.
-3. Confirm you are comfortable running one local import command on your computer when we reach that step (it needs your Supabase service key, which should never go in chat or in the repo).
+Verdict: **compatible with an in-app catalog, with the conditions below.** Not legal advice.
+
+| Term | What it means for ForgeLoad |
+|---|---|
+| 1. Free commercial in-app use | OK. Storing records in our database and showing them in the app is in-app use. |
+| 2. Visible attribution | Required: a visible "Exercise data by RepDB (repdb.co)" link on an about/credits screen or site footer. We will add a credits screen before any RepDB data ships. |
+| 3. No redistribution as a dataset or API | **The main risk.** Our public repo must never contain RepDB data, images, or files derived from them (including mapping reports that list their records). Catalog access goes through an authenticated, paged search function with a result cap and no "list everything" endpoint. Data export must contain only the user's own logs, not catalog metadata. Anyone who can sign up can still query the app, so this reduces rather than removes the exposure; a one-line confirmation from RepDB support is recommended. |
+| 4. Image edits | Resize, crop, recolor for in-app use is allowed (thumbnails are fine). Derivatives stay under term 3. |
+| 5. No generative-AI use of images | No image goes into any AI tool, including for quality review. Image checks are deterministic only (file exists, dimensions, format). Any future original demonstrations must not be derived from these images. |
+| 6. Premium preview animations | Excluded. The importer ignores the `premium-samples/` folder. |
+| 7. No warranty, not medical advice | Keep a not-medical-advice notice near instructions. |
+
+Other notes: record the license version and date in each imported row's source metadata. Images are stated to be original AI-generated works commissioned by RepDB, so our rights rest on their contract, not on copyright we can verify ourselves. Paid tiers remove the attribution requirement if ever wanted.
+
+## 7. Decisions and inputs needed from you
+
+1. ~~Send the RepDB license.~~ Received and reviewed above.
+2. Approve RepDB (free) as the primary source under the conditions in section 6.
+3. Optional but recommended: email support@repdb.co to confirm that an authenticated, paged in-app search over their data in our own database counts as in-app use.
+4. Confirm you are comfortable running one local import command on your computer when we reach that step (it needs your Supabase service key, which must never go in chat or in the repo).
