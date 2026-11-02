@@ -44,3 +44,6 @@ Full requirements for the exercise library are in `exercise-library-addendum.md`
 8. **Phase 7:** beta with 20-30 lifters. **Phase 8:** billing, only if validated.
 
 Why the library comes before onboarding: the generator should not pick from a messy catalog, and changing exercise identity later would put every user's history at risk. Doing ids first is the safer order. If you would rather have the questionnaire sooner, it can ship first using the existing templates and be re-pointed at the reviewed subset afterward.
+
+## Later: weekday schedule vs rotation (noted 2026-11-02)
+Today the next workout follows rotation (the day after the last completed one), so a missed day never skips a workout. Some lifters expect the app to follow the weekday ("it's Monday, show Monday"). Idea for later: a per-plan setting, "Follow rotation" (default) or "Follow my weekly schedule", with a way to assign days to weekdays. Needs real user feedback before building.
