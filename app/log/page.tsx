@@ -42,6 +42,7 @@ export default function LogPage() {
   const [suggestedDayId, setSuggestedDayId] = useState('');
   const [emptyDays, setEmptyDays] = useState<string[]>([]);
   const [exercises, setExercises] = useState<PlanEx[]>([]);
+  const [meta, setMeta] = useState<Record<string, { tracking: string; load: string }>>({});
   const [prev, setPrev] = useState<Record<string, Prev>>({});
   const [bestWeight, setBestWeight] = useState<Record<string, number>>({});
   const [session, setSession] = useState<Session | null>(null);
@@ -66,6 +67,15 @@ export default function LogPage() {
       .eq('workout_day_id', day).order('sort_order');
     const list = (exData ?? []) as PlanEx[];
     setExercises(list);
+
+    // How each exercise is logged (bodyweight, per-hand weights). Missing info = normal weight x reps.
+    const metaIds = list.map(e => e.exercise_id).filter(Boolean) as string[];
+    if (metaIds.length) {
+      const { data: mdata } = await supabase.from('exercises').select('id, tracking_type, load_convention').in('id', metaIds);
+      const m: Record<string, { tracking: string; load: string }> = {};
+      for (const r of (mdata ?? []) as { id: string; tracking_type: string; load_convention: string }[]) m[r.id] = { tracking: r.tracking_type, load: r.load_convention };
+      setMeta(m);
+    } else setMeta({});
 
     // History for these exercises, from COMPLETED sessions only.
     const prevMap: Record<string, Prev> = {};
@@ -279,6 +289,7 @@ export default function LogPage() {
         target_sets: ex.target_sets, target_rep_min: ex.rep_min, target_rep_max: ex.rep_max,
       }]).select('id').single();
       if (err || !data) { delete logIds.current[ex.exercise_name]; throw err ?? new Error('no log'); }
+      if (ex.exercise_id) void supabase.rpc('touch_exercise', { ex: ex.exercise_id }); // recents; failure is harmless
       return (data as { id: string }).id;
     })();
     logIds.current[ex.exercise_name] = p;
@@ -310,7 +321,8 @@ export default function LogPage() {
       const p = prev[ex.exercise_name]?.sets[i] ?? prev[ex.exercise_name]?.sets.at(-1);
       const weightStr = row.weight !== '' ? row.weight : t.weight !== null ? String(t.weight) : p ? String(p.weight) : '';
       const repsStr = row.reps !== '' ? row.reps : t.reps !== null ? String(t.reps) : '';
-      const weight = parseFloat(weightStr), reps = parseInt(repsStr, 10);
+      const isBw = meta[ex.exercise_id ?? '']?.tracking === 'bodyweight_reps';
+      const weight = isBw && weightStr === '' ? 0 : parseFloat(weightStr), reps = parseInt(repsStr, 10);
       if (!Number.isFinite(weight) || !Number.isFinite(reps) || reps <= 0) {
         setError(`Enter weight and reps for ${ex.exercise_name} set ${i + 1}.`);
         return;
@@ -484,15 +496,19 @@ export default function LogPage() {
         const t = targets[ex.id];
         const p = prev[ex.exercise_name];
         const rs = rows[ex.id] ?? [];
+        const m = meta[ex.exercise_id ?? ''];
+        const bw = m?.tracking === 'bodyweight_reps';
+        const added = m?.tracking === 'added_weight_reps';
+        const loadNote = m?.load === 'per_hand' ? 'Weight is per hand' : m?.load === 'per_side' ? 'Weight is per side' : '';
         return (
           <section key={ex.id} className={`${card} mb-3`}>
             <h2 className="text-lg font-bold">{ex.exercise_name}</h2>
-            <div className="text-sm text-[#777]">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} reps</div>
+            <div className="text-sm text-[#777]">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} reps{loadNote ? ` · ${loadNote}` : ''}</div>
             <details className="mb-3 mt-2 rounded-xl bg-[#1a1a1a] px-3 py-2">
               <summary className="cursor-pointer list-none text-sm">
                 <span className="text-[#888]">Target </span>
                 <span className="font-semibold text-green-400">
-                  {t.action === 'start' ? `Find a ${ex.rep_min}-${ex.rep_max} rep weight` : `${t.weight !== null ? `${t.weight} lb` : 'add load'} × ${t.reps}`}
+                  {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : `Find a ${ex.rep_min}-${ex.rep_max} rep weight`) : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} lb` : 'add load'} × ${t.reps}`)}
                 </span>
                 <span className="ml-2 text-xs text-[#666] underline">why?</span>
               </summary>
@@ -500,7 +516,7 @@ export default function LogPage() {
             </details>
 
             <div className="mb-1 grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] gap-2 text-center text-[11px] uppercase tracking-wide text-[#666]">
-              <span>Set</span><span>Previous</span><span>Lb</span><span>Reps</span><span className="sr-only">Done</span>
+              <span>Set</span><span>Previous</span><span>{bw || added ? '+Lb' : 'Lb'}</span><span>Reps</span><span className="sr-only">Done</span>
             </div>
             {rs.map((r, i) => {
               const pv = p?.sets[i] ?? p?.sets.at(-1);
@@ -511,7 +527,7 @@ export default function LogPage() {
                   <input
                     aria-label={`${ex.exercise_name} set ${i + 1} weight in pounds`}
                     inputMode="decimal" disabled={!session} value={r.weight}
-                    placeholder={t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
+                    placeholder={bw && !t.weight && !pv?.weight ? 'BW' : t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
                     onChange={e => setRow(ex.id, i, { weight: clean(e.target.value) })}
                     className={`${inputCls} ${r.done ? 'border-green-400/40 bg-green-400/10' : ''}`}
                   />

@@ -34,7 +34,7 @@ create policy "own rows" on exercise_logs for all to authenticated using (user_i
 alter table workout_sessions enable row level security;
 create policy "own rows" on workout_sessions for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
-grant usage on schema public, extensions to authenticated;
+grant usage on schema public, extensions, auth to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 
 -- Made-up sample catalog (NOT real library data), incl. a typo name like the one in the real app.
