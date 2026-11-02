@@ -21,7 +21,7 @@ export default function LoginPage() {
       setMessage('Check your email to confirm your account, then sign in.');
       return;
     }
-    router.push('/log');
+    router.push('/');
   }
 
   const input = { width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #333', background: '#1a1a1a', color: '#fff', fontSize: '16px', marginBottom: '0.75rem', boxSizing: 'border-box' as const };
