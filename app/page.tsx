@@ -109,8 +109,9 @@ export default function HomePage() {
           ) : data.planCount === 0 ? (
             <section className={card}>
               <h2 className="mb-1 text-2xl font-bold">Start with a plan</h2>
-              <p className="mb-4 text-[#aaa]">Pick a ready-made template or build your own. It takes about a minute.</p>
-              <Link href="/plan" className={primary}>Create your plan</Link>
+              <p className="mb-4 text-[#aaa]">Answer two quick questions and get a plan that fits your week.</p>
+              <Link href="/start" className={primary}>Set up my plan</Link>
+              <Link href="/plan" className="mt-3 block text-center text-sm text-[#888] underline-offset-2 hover:underline">Or build it yourself</Link>
             </section>
           ) : data.emptyPlan ? (
             <section className={card}>

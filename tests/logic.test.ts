@@ -106,3 +106,31 @@ test('local dates are not shifted by UTC', () => {
   assert.equal(parsed.getDate(), 2);
   assert.equal(parsed.getMonth(), 10);
 });
+
+import { recommendPlan } from '../app/lib/recommend.ts';
+import { TEMPLATES } from '../app/lib/templates.ts';
+
+test('recommendation: every pick is a real template, for every answer', () => {
+  const ids = new Set(TEMPLATES.map(t => t.id));
+  for (const d of [1, 2, 3, 4, 5, 6, 7])
+    for (const x of ['new', 'some', 'experienced'] as const) {
+      const r = recommendPlan(d, x);
+      assert.ok(ids.has(r.primary), `${d} ${x}`);
+      for (const a of r.alternatives) assert.ok(ids.has(a));
+      assert.ok(!r.alternatives.includes(r.primary));
+      assert.ok(r.why.length > 20);
+    }
+});
+test('recommendation: days per week drive the split', () => {
+  assert.equal(recommendPlan(3, 'some').primary, 'fbeod');
+  assert.equal(recommendPlan(2, 'new').primary, 'fbeod');
+  assert.equal(recommendPlan(4, 'some').primary, 'ul2');
+  assert.equal(recommendPlan(5, 'experienced').primary, 'ppl-ul');
+  assert.equal(recommendPlan(6, 'experienced').primary, 'ppl');
+});
+test('recommendation: new lifters are not pushed to 5-6 days, but can still pick them', () => {
+  assert.equal(recommendPlan(6, 'new').primary, 'ul2');
+  assert.deepEqual(recommendPlan(6, 'new').alternatives, ['ppl']);
+  assert.equal(recommendPlan(5, 'new').primary, 'ul2');
+  assert.deepEqual(recommendPlan(5, 'new').alternatives, ['ppl-ul']);
+});
