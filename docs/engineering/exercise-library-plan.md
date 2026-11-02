@@ -92,3 +92,17 @@ Built: muscle and equipment filter chips (data from `exercise_facets()`), favori
 
 Verified locally: 17 unit tests, 24 + 18 SQL checks on a fresh Postgres, production build, and browser tests against a simulated API (library paging, filter, favorite, create + validation; plan picker; log flow; empty-day rotation).
 Not verified: real Supabase project, a physical phone, the full catalog (still the existing ~149 exercises).
+
+
+## Phase 4 start: RepDB confirmed (2026-11-02)
+
+RepDB support (Sergei) replied in writing to the owner's question. Summary, not a quote:
+- Storing records and images in our own Supabase database and showing them to signed-in users is in-app use under free license v1.0.
+- Authenticated, paged search is fine. We must not offer a public endpoint or bulk export of the records or images.
+- Keep the data out of the public repo and out of any public storage bucket.
+- No generative-AI use of images. Images may be resized, cropped or recolored for in-app use.
+- Attribution: a visible link "Exercise data by RepDB (https://repdb.co/)" on an about/credits screen, README or website footer; rel="nofollow" is allowed.
+
+Decision: RepDB (free) is the primary source. Free tier is the preview bundle (about 169 MB, JSON/SQL/TypeScript, no signup). Fields per RepDB's site: id, name, description, instructions, tips, category, difficulty, equipment, body_part, primary/secondary muscles, goals, tags, variation_group, relations, images. The importer must work from what is actually in the bundle, and published counts will only include entries that pass validation.
+
+Plan: (1) credits screen with the attribution link, before any data ships; (2) local importer that reads the bundle from the owner's computer, writes a dry-run report and a SQL file locally (both gitignored, no service key needed), mapping exact normalized name matches onto existing built-ins and creating new rows otherwise; (3) owner reviews counts, then runs the SQL; (4) images as a separate step, in a private bucket with signed URLs only.

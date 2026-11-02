@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Third-party exercise data and importer output: never commit (RepDB license term 3)
+/private-data/
+/import-output/
