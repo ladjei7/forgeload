@@ -77,3 +77,9 @@ Other notes: record the license version and date in each imported row's source m
 2. Approve RepDB (free) as the primary source under the conditions in section 6.
 3. Optional but recommended: email support@repdb.co to confirm that an authenticated, paged in-app search over their data in our own database counts as in-app use.
 4. Confirm you are comfortable running one local import command on your computer when we reach that step (it needs your Supabase service key, which must never go in chat or in the repo).
+
+## 8. Status: Phase 2A (exercise identity) built, not merged
+
+Branch `phase-2a-exercise-ids`. Migration `002_exercise_identity.sql` adds the canonical columns, `exercise_id` on plans and logs (backfilled only on an exact, unambiguous name match), a database-side `search_exercises` function (abbreviations, aliases, typo tolerance, ranking, 50-result cap), and restrictive policies so built-in exercises cannot be edited or deleted by users. The picker, Plan page, templates and Log history now use ids; Log keeps matching older rows by name.
+
+Verified: 20 database checks on a local Postgres 16 (backfill, search, isolation, protection, anon denied), migration re-run is harmless, search takes 8-20 ms on 816 synthetic rows (database time only), plus browser tests of Plan and Log against a simulated API. **Not verified:** the real Supabase project, a real phone, or the real catalog. No third-party data has been imported. Muscle/equipment filter chips, favorites, recents and the standalone library screen are not built yet.
