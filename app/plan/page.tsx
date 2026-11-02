@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import Link from 'next/link';
 import ExercisePicker from '../components/ExercisePicker';
 import { TEMPLATES } from '../lib/templates';
 
@@ -76,6 +77,7 @@ export default function PlanPage() {
       target_sets: parseInt(sets), rep_min: parseInt(repMin), rep_max: parseInt(repMax), sort_order: exercises.length,
     }]);
     if (error) return setMessage('Error: ' + error.message);
+    if (exerciseId) void supabase.rpc('touch_exercise', { ex: exerciseId }); // recents; failure is harmless
     setMessage('Added: ' + exerciseName); setExerciseName(''); setExerciseId(''); await loadExercises(dayId);
   }
   async function applyTemplate() {
@@ -162,6 +164,7 @@ export default function PlanPage() {
   return (
     <main style={{ minHeight: '100vh', background: '#000', color: '#fff', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Your Plan</h1>
+      <Link href="/library" style={{ display: 'inline-block', marginBottom: '1rem', color: '#4ade80' }}>Browse exercise library →</Link>
 
       <div style={card}>
         <h2 style={h2}>Start from a template</h2>

@@ -83,3 +83,12 @@ Other notes: record the license version and date in each imported row's source m
 Branch `phase-2a-exercise-ids`. Migration `002_exercise_identity.sql` adds the canonical columns, `exercise_id` on plans and logs (backfilled only on an exact, unambiguous name match), a database-side `search_exercises` function (abbreviations, aliases, typo tolerance, ranking, 50-result cap), and restrictive policies so built-in exercises cannot be edited or deleted by users. The picker, Plan page, templates and Log history now use ids; Log keeps matching older rows by name.
 
 Verified: 20 database checks on a local Postgres 16 (backfill, search, isolation, protection, anon denied), migration re-run is harmless, search takes 8-20 ms on 816 synthetic rows (database time only), plus browser tests of Plan and Log against a simulated API. **Not verified:** the real Supabase project, a real phone, or the real catalog. No third-party data has been imported. Muscle/equipment filter chips, favorites, recents and the standalone library screen are not built yet.
+
+## Phase 2B status: library UI (branch `phase-2b-library-ui`)
+
+Built: muscle and equipment filter chips (data from `exercise_facets()`), favorites and recents (`user_exercise_prefs`, migration 003), picker shortcuts, a `/library` page (search, All/Favorites/Recent/Mine tabs, load more, favorite star, details), custom exercise create/edit/duplicate/archive/restore (private, duplicate names blocked), and Log support for bodyweight and per-hand/per-side exercises.
+
+**Before the preview works:** run `supabase/migrations/003_exercise_prefs.sql` once in the Supabase SQL Editor (additive, rollback in file).
+
+Verified locally: 17 unit tests, 24 + 18 SQL checks on a fresh Postgres, production build, and browser tests against a simulated API (library paging, filter, favorite, create + validation; plan picker; log flow; empty-day rotation).
+Not verified: real Supabase project, a physical phone, the full catalog (still the existing ~149 exercises).
