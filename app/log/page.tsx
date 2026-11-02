@@ -147,9 +147,10 @@ export default function LogPage() {
     let last: string | null = null;
     if (list.length) {
       const { data: done } = await supabase
-        .from('workout_sessions').select('workout_day_id')
+        .from('workout_sessions').select('workout_day_id, exercise_logs!inner(exercise_sets!inner(id))')
         .in('workout_day_id', list.map(d => d.id)).not('completed_at', 'is', null)
         .order('completed_at', { ascending: false }).limit(1);
+      // Only workouts with at least one logged set count (old empty sessions are ignored).
       last = (done?.[0] as { workout_day_id: string } | undefined)?.workout_day_id ?? null;
     }
     // Days with no exercises can't be started, so rotation skips them.
