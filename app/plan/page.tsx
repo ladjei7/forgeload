@@ -86,7 +86,7 @@ export default function PlanPage() {
       target_sets: parseInt(sets), rep_min: parseInt(repMin), rep_max: parseInt(repMax), sort_order: exercises.length,
     }]);
     if (error) return setMessage('Error: ' + error.message);
-    if (linkId) void supabase.rpc('touch_exercise', { ex: linkId }); // recents; failure is harmless
+    if (linkId) supabase.rpc('touch_exercise', { ex: linkId }).then(() => {}, () => {}); // recents; failure is harmless
     setMessage('Added: ' + exerciseName); setExerciseName(''); setExerciseId(''); await loadExercises(dayId);
   }
   async function applyTemplate() {

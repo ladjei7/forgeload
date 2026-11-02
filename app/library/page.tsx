@@ -158,6 +158,13 @@ export default function LibraryPage() {
     clearFacetCache(); setNote(archived ? 'Archived.' : 'Restored.'); await load(false, 0);
   }
 
+  async function deleteExercise(ex: Ex) {
+    if (!confirm(`Delete "${ex.name}" for good? Plans and past workouts that used it keep the name and your numbers. This cannot be undone.`)) return;
+    const { error: err } = await supabase.from('exercises').delete().eq('id', ex.id);
+    if (err) return setError(`Could not delete: ${err.message}`);
+    clearFacetCache(); setOpenId(''); setNote('Deleted.'); await load(false, 0); void loadFavs();
+  }
+
   const tabBtn = (t: Tab, label: string) => (
     <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
       className={`h-10 shrink-0 rounded-full px-4 text-sm font-semibold ${tab === t ? 'bg-white text-black' : 'bg-[#1a1a1a] text-[#bbb]'}`}>{label}</button>
@@ -249,8 +256,9 @@ export default function LibraryPage() {
                         : <>
                             <button onClick={() => startNew(ex)} className="h-10 rounded-xl bg-[#222] px-4">Edit</button>
                             <button onClick={() => startNew(ex, true)} className="h-10 rounded-xl bg-[#222] px-4">Duplicate</button>
-                            <button onClick={() => setArchived(ex, true)} className="h-10 rounded-xl bg-[#2a1111] px-4 text-red-300">Archive</button>
+                            <button onClick={() => setArchived(ex, true)} className="h-10 rounded-xl bg-[#222] px-4">Archive</button>
                           </>}
+                      <button onClick={() => deleteExercise(ex)} className="h-10 rounded-xl bg-[#2a1111] px-4 text-red-300">Delete</button>
                     </div>
                   )}
                 </div>

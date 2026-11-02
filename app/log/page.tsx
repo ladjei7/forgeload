@@ -289,7 +289,7 @@ export default function LogPage() {
         target_sets: ex.target_sets, target_rep_min: ex.rep_min, target_rep_max: ex.rep_max,
       }]).select('id').single();
       if (err || !data) { delete logIds.current[ex.exercise_name]; throw err ?? new Error('no log'); }
-      if (ex.exercise_id) void supabase.rpc('touch_exercise', { ex: ex.exercise_id }); // recents; failure is harmless
+      if (ex.exercise_id) supabase.rpc('touch_exercise', { ex: ex.exercise_id }).then(() => {}, () => {}); // recents; failure is harmless
       return (data as { id: string }).id;
     })();
     logIds.current[ex.exercise_name] = p;
