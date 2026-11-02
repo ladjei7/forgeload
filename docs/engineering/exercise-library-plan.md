@@ -1,0 +1,62 @@
+# Exercise library: impact assessment, source comparison, import strategy
+
+Date: 2026-11-02. Requirements: `docs/product/exercise-library-addendum.md`. Status: **assessment only. Nothing has been imported or changed in the database.**
+
+## 1. What the current code does (and why it matters here)
+
+| Current behavior | Consequence for a 700-1,000+ exercise library |
+|---|---|
+| `plan_exercises.exercise_name` and `exercise_logs.exercise_name` store the exercise as a **text name**. The Log page matches previous performance by that name. | Renaming, merging or cleaning a catalog name splits or loses history. Stable ids are required **before** any import. |
+| `templates.ts` resolves template exercises to library names by fuzzy text match when a plan is created. | Must point at canonical ids instead. |
+| `ExercisePicker` loads the whole `exercises` table in one query, no limit. | The API typically caps a response at 1,000 rows (verify in project settings), so a bigger catalog plus custom exercises could be **silently truncated**. Needs server-side search with paging. |
+| `exercises` has only name, muscle_group, equipment, user_id. Custom exercises are created as muscle "Other", equipment "Other". | Needs the canonical fields in the addendum (aliases, secondary muscles, movement pattern, tracking type, load convention, status, source). |
+| `exercise_sets` stores only `reps` and `weight`. The Log page and `suggestTarget` assume weight x reps. | Duration, distance and assisted/added-weight exercises need new columns and tracking-type-aware logging and targets. Until then, non-weight exercises should not get a progression target. |
+| History volume = weight x reps. | Must skip or handle other tracking types. |
+| Whether users can edit or delete built-in rows (user_id NULL) depends on RLS policies I have not re-tested. | Must be tested before custom-exercise editing ships. |
+
+## 2. Proposed model (additive, nothing dropped)
+
+- Extend `exercises` with: `aliases text[]`, `secondary_muscles text[]`, `movement_pattern`, `category`, `mechanic` (compound/isolation), `level`, `is_unilateral`, `tracking_type` (enum: weight_reps, bodyweight_reps, added_weight_reps, assisted_reps, duration, weight_duration, distance_duration), `load_convention` (total, per_hand, per_side, per_implement), `instructions`, `source`, `source_id`, `source_version`, `review_status`, `plan_eligible boolean default false`, `archived_at`.
+- Add nullable `exercise_id` to `plan_exercises` and `exercise_logs`. Backfill by **exact** name match to the existing 149; leave unmatched rows NULL for manual review. Keep `exercise_name` as the snapshot shown in history, so old logs never change.
+- Add `exercise_sets.duration_seconds` and `distance_m` (nullable).
+- Add `user_exercise_prefs` (favorite, last_used_at) for favorites and recents.
+- Add `exercise_substitutions` (from, to, similarity note) as reviewed data, not auto-generated.
+- Search: enable `pg_trgm`, add a `tsvector` and an alias match, expose one `search_exercises(query, muscle, equipment, limit)` RPC that runs with the caller's RLS. No external search service.
+
+## 3. Source comparison
+
+Facts below come from the repo pages (2026-11-02). **I could not read RepDB's full `LICENSE-DATA.md`** (blocked in this environment), so its terms are a summary only. This is not legal advice.
+
+| | RepDB (free) | Free Exercise DB | wger |
+|---|---|---|---|
+| Size | 701 | "800+" | Not stated |
+| Metadata | Rich: category, force, mechanic, difficulty, equipment, body part, primary/secondary muscles, goals, tags, unilateral and bodyweight flags, EN/DE/ES instructions and tips | Good: force, level, mechanic, equipment, primary/secondary muscles, instructions, category. Some fields can be null. | Not assessed |
+| Media | 512x512 flat WebP, start/peak poses | Images in repo; **origin not stated** | Per-entry licenses |
+| License | Free for personal and commercial **in-app** use; attribution required; no redistribution as a dataset, repo or API; images not usable for generative AI | "Unlicense" badge (public domain). Provenance of images and of the original text **unverified**. | Code AGPL-3.0; exercise data "Creative Commons, see individual entries"; share-alike licenses possible |
+| Fit | Best structured data for our model | Good supplement for gaps | Highest license risk (share-alike, per-entry) |
+| Not used | ExerciseDB API (per your instruction) | | |
+
+## 4. Recommended strategy (needs your approval)
+
+1. **Primary source: RepDB free, conditional** on reading the full `LICENSE-DATA.md` and confirming that storing records in our own database behind login, with visible attribution, is within "in-app use".
+2. **Supplement: Free Exercise DB, data only,** after spot-checking provenance. No images from it unless their origin is established.
+3. **Skip wger** for now.
+4. **The repo is public.** Raw datasets, converted dataset files and images must never be committed. The import script lives in the repo; the data and its output are gitignored and processed on your computer or in Supabase only.
+5. **No bulk endpoint.** Catalog reads go through the authenticated search RPC with paging. Images go in a private storage bucket with listing disabled and are served per exercise.
+6. Show "Exercise data by RepDB (repdb.co)" in the app, plus an attribution file, for any RepDB-sourced entry.
+7. Pipeline (reproducible, versioned): load raw -> validate schema -> normalize muscle/equipment taxonomy -> canonical naming -> detect duplicates against the 149 and across sources -> map or add -> write a report. Report buckets match the addendum: raw, accepted, rejected, merged, existing preserved, needs review, approved for plan generation. **Published count = only what passes validation.**
+8. Existing 149: map to canonical entries by reviewed mapping CSV. Never auto-merge exercises with different biomechanics or loading. Unmapped rows stay as they are.
+9. Run order: additive schema migration -> backfill ids -> import into a **staging** table -> review report -> you approve -> promote. Rollback: imports carry `source_version`, so a version can be removed without touching user rows.
+
+## 5. Impact on the existing roadmap
+
+- Stable exercise ids move from Phase 3 to the start of the library phase.
+- Plan generation (onboarding) moves after the library and the reviewed `plan_eligible` subset.
+- Progression targets stay weight x reps only until tracking-type-aware logic exists.
+- The Phase 1 Log page needs no rework; it will switch from name to id matching when ids land.
+
+## 6. Decisions and inputs needed from you
+
+1. Paste or send the full RepDB `LICENSE-DATA.md` (or approve me reading it another way), so the license check can be completed.
+2. Approve the source strategy above, or choose another.
+3. Confirm you are comfortable running one local import command on your computer when we reach that step (it needs your Supabase service key, which should never go in chat or in the repo).
