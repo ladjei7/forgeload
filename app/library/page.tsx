@@ -135,10 +135,11 @@ export default function LibraryPage() {
         aliases: form.aliases.split(',').map(s => s.trim()).filter(Boolean),
         instructions: form.notes.trim() || null,
       };
-      const { error: err } = form.id
-        ? await supabase.from('exercises').update(row).eq('id', form.id)
+      const { data: wrote, error: err } = form.id
+        ? await supabase.from('exercises').update(row).eq('id', form.id).select('id')
         : await supabase.from('exercises').insert([{ ...row, user_id: uid }]);
       if (err) throw err;
+      if (form.id && (!wrote || wrote.length === 0)) throw new Error('The database did not allow this edit. Run migration 004 in Supabase.');
       clearFacetCache();
       setNote(form.id ? 'Saved.' : `Created "${name}".`);
       setForm(null); setTab('mine'); await load(false, 0);
@@ -152,10 +153,18 @@ export default function LibraryPage() {
 
   async function setArchived(ex: Ex, archived: boolean) {
     if (archived && !confirm(`Archive "${ex.name}"? It will stop appearing in search. Your logged workouts keep it, and you can restore it anytime.`)) return;
-    const { error: err } = await supabase.from('exercises')
-      .update({ archived_at: archived ? new Date().toISOString() : null }).eq('id', ex.id);
-    if (err) return setError('Could not update the exercise.');
+    const { data: upd, error: err } = await supabase.from('exercises')
+      .update({ archived_at: archived ? new Date().toISOString() : null }).eq('id', ex.id).select('id');
+    if (err || !upd || upd.length === 0) return setError('Could not update the exercise. Run migration 004 in Supabase, then try again.');
     clearFacetCache(); setNote(archived ? 'Archived.' : 'Restored.'); await load(false, 0);
+  }
+
+  async function deleteExercise(ex: Ex) {
+    if (!confirm(`Delete "${ex.name}" for good? Plans and past workouts that used it keep the name and your numbers. This cannot be undone.`)) return;
+    const { data: gone, error: err } = await supabase.from('exercises').delete().eq('id', ex.id).select('id');
+    if (err) return setError(`Could not delete: ${err.message}`);
+    if (!gone || gone.length === 0) return setError('Delete was not allowed by the database. Run migration 004 in Supabase, then try again.');
+    clearFacetCache(); setOpenId(''); setNote('Deleted.'); await load(false, 0); void loadFavs();
   }
 
   const tabBtn = (t: Tab, label: string) => (
@@ -249,8 +258,9 @@ export default function LibraryPage() {
                         : <>
                             <button onClick={() => startNew(ex)} className="h-10 rounded-xl bg-[#222] px-4">Edit</button>
                             <button onClick={() => startNew(ex, true)} className="h-10 rounded-xl bg-[#222] px-4">Duplicate</button>
-                            <button onClick={() => setArchived(ex, true)} className="h-10 rounded-xl bg-[#2a1111] px-4 text-red-300">Archive</button>
+                            <button onClick={() => setArchived(ex, true)} className="h-10 rounded-xl bg-[#222] px-4">Archive</button>
                           </>}
+                      <button onClick={() => deleteExercise(ex)} className="h-10 rounded-xl bg-[#2a1111] px-4 text-red-300">Delete</button>
                     </div>
                   )}
                 </div>
