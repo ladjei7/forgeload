@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 
 export default function BottomNav() {
   const pathname = usePathname();
-  if (pathname === '/login') return null;
+  if (pathname === '/login' || pathname?.startsWith('/design-preview')) return null;
   return (
     <nav style={{
       position: 'fixed',

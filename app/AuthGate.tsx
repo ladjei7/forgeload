@@ -7,8 +7,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  // Design preview is mock-data only and needs no session.
+  const isPreview = pathname?.startsWith('/design-preview') ?? false;
 
   useEffect(() => {
+    if (isPreview) return;
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session && pathname !== '/login') router.replace('/login');
       else setReady(true);
@@ -17,8 +20,9 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       if (!session && pathname !== '/login') router.replace('/login');
     });
     return () => sub.subscription.unsubscribe();
-  }, [pathname, router]);
+  }, [pathname, router, isPreview]);
 
+  if (isPreview) return <>{children}</>;
   if (!ready && pathname !== '/login') return null;
   return <>{children}</>;
 }
