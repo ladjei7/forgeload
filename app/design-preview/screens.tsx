@@ -489,12 +489,11 @@ export function LibraryScreen({ c }: { c: Ctx }) {
 }
 
 /* ---------- Onboarding + generated plan review ---------- */
-const QS: { k: 'days' | 'exp' | 'goal' | 'time' | 'equip'; q: string; help: string; opts: { v: string | number; t: string; d: string }[] }[] = [
+const QS: { k: 'days' | 'exp' | 'goal' | 'time'; q: string; help: string; opts: { v: string | number; t: string; d: string }[] }[] = [
   { k: 'days', q: 'How many days a week can you train?', help: 'Pick what you can keep doing. Consistency beats ambition.', opts: [2, 3, 4, 5, 6].map((n) => ({ v: n, t: `${n} days`, d: n <= 3 ? 'Full body' : n === 4 ? 'Upper / lower' : 'Split' })) },
   { k: 'exp', q: 'How would you describe your lifting?', help: 'This sets how fast the targets move.', opts: [{ v: 'new', t: 'New to lifting', d: 'Under 6 months' }, { v: 'some', t: 'Some experience', d: '6 months to 2 years' }, { v: 'exp', t: 'Experienced', d: 'More than 2 years' }] },
   { k: 'goal', q: 'What matters most right now?', help: 'You can change this later.', opts: [{ v: 'muscle', t: 'Build muscle', d: 'More reps per set' }, { v: 'strength', t: 'Get stronger', d: 'Heavier, fewer reps' }, { v: 'both', t: 'A bit of both', d: 'Balanced' }] },
   { k: 'time', q: 'How long is a typical session?', help: 'We keep every workout within this limit.', opts: [{ v: 45, t: '45 minutes', d: '4 exercises' }, { v: 60, t: '60 minutes', d: '4 to 5 exercises' }, { v: 90, t: '90 minutes', d: '5 or more' }] },
-  { k: 'equip', q: 'What can you train with?', help: 'We only suggest exercises you can do.', opts: [{ v: 'gym', t: 'A full gym', d: 'Barbells, cables, machines' }, { v: 'home', t: 'Dumbbells and bodyweight', d: 'Home setup' }] },
 ];
 export function Onboard({ c, x }: { c: Ctx; x: Extra }) {
   const { ob } = c.s; const q = QS[ob.step]; const val = ob.a[q.k];
@@ -506,7 +505,7 @@ export function Onboard({ c, x }: { c: Ctx; x: Extra }) {
         <div className="fl-seg" style={{ flex: 1 }} role="img" aria-label={`Question ${ob.step + 1} of ${QS.length}`}>{QS.map((_, i) => <i key={i} className={i < ob.step ? 'd' : i === ob.step ? 'c' : ''} />)}</div>
       </div>
       <div style={{ marginTop: 6 }}>
-        {ob.step === 0 && <div className="fl-row" style={{ marginBottom: 8 }}><FMark size={28} /><span className="fl-sub">Let&apos;s build your plan in five questions</span></div>}
+        {ob.step === 0 && <div className="fl-row" style={{ marginBottom: 8 }}><FMark size={28} /><span className="fl-sub">Let&apos;s build your plan in four questions</span></div>}
         <h1 className="fl-h1" style={{ fontSize: 26 }}>{q.q}</h1>
         <p className="fl-sub" style={{ marginTop: 6 }}>{q.help}</p>
       </div>
@@ -534,7 +533,7 @@ export function Review({ c }: { c: Ctx }) {
         <p className="fl-sub" style={{ marginTop: 6 }}>Because you can train {a.days} days, we chose {split}. {goalTxt}</p>
         <div className="fl-row" style={{ marginTop: 10, flexWrap: 'wrap' }}>
           <span className="fl-chip">{a.exp === 'new' ? 'New to lifting' : a.exp === 'some' ? 'Some experience' : 'Experienced'}</span>
-          <span className="fl-chip">{a.equip === 'gym' ? 'Full gym' : 'Dumbbells'}</span><span className="fl-chip">up to {a.time} min</span>
+          <span className="fl-chip">up to {a.time} min</span>
         </div>
       </div>
       {plan.map((d, di) => (

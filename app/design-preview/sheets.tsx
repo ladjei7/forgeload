@@ -213,7 +213,7 @@ export function ProtoControls({ c, x }: { c: Ctx; x: Extra }) {
       <div className="fl-panel"><h3>Scenarios</h3>
         <div className="seg">
           <button onClick={jump(() => x.interrupted())}>Interrupted workout</button>
-          <button onClick={jump(() => { x.reset({ screen: 'onboard', plan: [], hist: {}, lastDay: null, weekDone: [false, false, false, false, false, false, false], ob: { step: 0, a: { days: 4, exp: 'some', goal: 'both', time: 60, equip: 'gym' } } }); })}>New user</button>
+          <button onClick={jump(() => { x.reset({ screen: 'onboard', plan: [], hist: {}, lastDay: null, weekDone: [false, false, false, false, false, false, false], ob: { step: 0, a: { days: 4, exp: 'some', goal: 'both', time: 60 } } }); })}>New user</button>
           <button onClick={jump(() => x.reset())}>Reset demo</button>
         </div>
         <div className="seg">

@@ -10,7 +10,7 @@ export type Workout = {
   dayId: string; dayIdx: number; startedAt: number; exs: WEx[]; idx: number; sets: SetLog[];
   ovr: Record<string, { w: number; r: number }>; draft: Record<string, Draft>; restEnd: number | null; restLen: number;
 };
-export type Answers = { days: number; exp: string; goal: string; time: number; equip: string };
+export type Answers = { days: number; exp: string; goal: string; time: number };
 export type Summary = {
   dayName: string; logged: number; planned: number; skipped: number; volume: number; minutes: number;
   highs: string[]; next: { name: string; text: string }[]; nextDayName: string; nextPos: number; total: number; unsynced: number;

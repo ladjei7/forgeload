@@ -15,19 +15,9 @@ const seed = (): State => ({
   weekDone: [true, false, true, false, true, false, false], today: 6,
   workout: null, net: 'online', theme: 'dark', mode: 'list', fav: ['bench'], recent: ['bench', 'row', 'ohp'], custom: [],
   planSave: 'saved', selDay: 0, exp: null, summary: null,
-  ob: { step: 0, a: { days: 4, exp: 'some', goal: 'both', time: 60, equip: 'gym' } }, draftPlan: null,
+  ob: { step: 0, a: { days: 4, exp: 'some', goal: 'both', time: 60 } }, draftPlan: null,
   sheet: null, toast: null, fresh: false,
 });
-
-const DB_MAP: Record<string, string> = { bench: 'incdb', row: 'dbrow', ohp: 'lateral', pulldown: 'pullup', cablerow: 'dbrow', facepull: 'lateral', squat: 'lunge', rdl: 'lunge', legpress: 'lunge', legext: 'lunge', legcurl: 'lunge', thrust: 'lunge', calf: 'lunge', pushdown: 'curl' };
-function forEquipment(plan: Day[], equip: string): Day[] {
-  if (equip === 'gym') return plan;
-  return plan.map((d) => {
-    const seen = new Set<string>();
-    const ex = d.ex.map((e) => ({ ...e, exId: DB_MAP[e.exId] ?? e.exId })).filter((e) => (seen.has(e.exId) ? false : (seen.add(e.exId), true)));
-    return { ...d, ex };
-  });
-}
 
 export default function Proto() {
   const [s, setS] = useState<State>(seed);
@@ -197,7 +187,7 @@ export default function Proto() {
   }, [mkWorkout]);
 
   const ctx: Ctx = { s, lib, now, go, set, open, close, toast, targetOf, startWorkout, logSet, retrySet, editDraft, stepDraft, finish, mutatePlan, retryPlanSave, acts };
-  const extra = { reset, interrupted, costs, resetActs: () => { setActs(0); actsRef.current = 0; setCosts([]); lastLogActs.current = 0; }, generate: (a: Answers) => forEquipment(generatePlan(a.days, a.time), a.equip) };
+  const extra = { reset, interrupted, costs, resetActs: () => { setActs(0); actsRef.current = 0; setCosts([]); lastLogActs.current = 0; }, generate: (a: Answers) => generatePlan(a.days, a.time) };
 
   const onClickCapture = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button,input,select,summary,[role=switch]')) { actsRef.current += 1; setActs(actsRef.current); }
