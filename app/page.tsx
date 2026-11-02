@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { supabase } from './lib/supabase';
 import { nextDayId } from './lib/rotation';
 
@@ -27,7 +26,6 @@ export default function HomePage() {
   const [data, setData] = useState<Home | null>(null);
   const [error, setError] = useState('');
   const [email, setEmail] = useState('');
-  const router = useRouter();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: s }) => setEmail(s.session?.user.email ?? ''));
@@ -172,10 +170,7 @@ export default function HomePage() {
               <div className="text-xs uppercase tracking-wide text-[#777]">Signed in as</div>
               <div className="truncate text-sm">{email || 'your account'}</div>
             </div>
-            <button
-              onClick={async () => { await supabase.auth.signOut(); router.replace('/login'); }}
-              className="h-11 shrink-0 rounded-xl bg-[#222] px-4 text-sm font-semibold"
-            >Sign out</button>
+            <Link href="/settings" className="flex h-11 shrink-0 items-center rounded-xl bg-[#222] px-4 text-sm font-semibold">Settings</Link>
           </section>
         </div>
       )}

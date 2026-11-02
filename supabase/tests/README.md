@@ -16,3 +16,5 @@ For the favorites/recents test, start from a fresh database: fixture, 001, 002, 
 Covers: id backfill (exact only, nothing guessed), search (abbreviations, typos, ranking,
 filters, result cap), per-user isolation of custom exercises, built-ins protected from edit,
 insert and delete, and that anonymous users cannot call search.
+
+`delete_account_test.sql` (9 checks): run after fixture + 001 + 002 on a fresh database. Covers: anon and signed-out refusal, full rollback when a table blocks deletion, success removes only the caller's rows and login, other users and built-in exercises untouched.
