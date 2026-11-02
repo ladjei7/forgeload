@@ -4,8 +4,8 @@ import { supabase } from '../lib/supabase';
 import Link from 'next/link';
 import ExercisePicker from '../components/ExercisePicker';
 import { TEMPLATES } from '../lib/templates';
+import { createPlanFromTemplate } from '../lib/applyTemplate';
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 type Plan = { id: string; name: string };
 type Day = { id: string; day_name: string; sort_order: number };
@@ -93,34 +93,10 @@ export default function PlanPage() {
     const tpl = TEMPLATES.find(t => t.id === tplId);
     if (!tpl || busy) return;
     setBusy(true);
-    // Link each template exercise to a catalog exercise (by id) using the database search.
-    // Exact name first; otherwise the shortest result containing every word; otherwise keep
-    // the template's own name with no link, so nothing is ever guessed.
-    const wanted = [...new Set(tpl.days.flatMap(d => d.exercises.map(e => e[0])))];
-    const found: Record<string, { id: string; name: string } | null> = {};
-    await Promise.all(wanted.map(async w => {
-      const { data } = await supabase.rpc('search_exercises', { q: w, lim: 10 });
-      const rows = (data ?? []) as { id: string; name: string }[];
-      const exact = rows.find(r => norm(r.name) === norm(w));
-      if (exact) { found[w] = exact; return; }
-      const tokens = norm(w).split(' ');
-      const hits = rows.filter(r => { const x = norm(r.name); return tokens.every(t => x.includes(t)); });
-      hits.sort((a, b) => a.name.length - b.name.length);
-      found[w] = hits[0] ?? null;
-    }));
-    const resolve = (want: string) => ({ name: found[want]?.name ?? want, id: found[want]?.id ?? null });
-    const { data: plan, error: pErr } = await supabase.from('workout_plans').insert([{ name: tpl.name }]).select().single();
-    if (pErr || !plan) { setBusy(false); return setMessage('Error: ' + (pErr?.message ?? 'could not create plan')); }
-    const { data: newDays, error: dErr } = await supabase.from('workout_days')
-      .insert(tpl.days.map((d, i) => ({ plan_id: plan.id, day_name: d.name, sort_order: i }))).select('id, sort_order');
-    if (dErr || !newDays) { setBusy(false); return setMessage('Error: ' + (dErr?.message ?? 'could not create days')); }
-    const rows = newDays.flatMap(nd => tpl.days[nd.sort_order].exercises.map(([name, s, mn, mx], j) => ({
-      workout_day_id: nd.id, exercise_name: resolve(name).name, exercise_id: resolve(name).id, target_sets: s, rep_min: mn, rep_max: mx, sort_order: j,
-    })));
-    const { error: eErr } = await supabase.from('plan_exercises').insert(rows);
+    const res = await createPlanFromTemplate(tpl);
     setBusy(false);
-    if (eErr) return setMessage('Error: ' + eErr.message);
-    await loadPlans(); setPlanId(plan.id);
+    if ('error' in res) return setMessage('Error: ' + res.error);
+    await loadPlans(); setPlanId(res.planId);
     setMessage(tpl.name + ' added. Rename days or swap exercises below to make it yours.');
   }
   async function renamePlan() {
