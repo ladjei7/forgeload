@@ -50,7 +50,7 @@ export default function HomePage() {
           if (dayList.length) {
             const ids = dayList.map(d => d.id);
             const [{ data: last }, { data: exs }] = await Promise.all([
-              supabase.from('workout_sessions').select('workout_day_id').in('workout_day_id', ids)
+              supabase.from('workout_sessions').select('workout_day_id, exercise_logs!inner(exercise_sets!inner(id))').in('workout_day_id', ids)
                 .not('completed_at', 'is', null).order('completed_at', { ascending: false }).limit(1),
               supabase.from('plan_exercises').select('workout_day_id, exercise_name, sort_order').in('workout_day_id', ids).order('sort_order'),
             ]);
@@ -68,9 +68,9 @@ export default function HomePage() {
 
         const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
         const [{ count: total }, { count: week }, { data: rec }] = await Promise.all([
-          supabase.from('workout_sessions').select('id', { count: 'exact', head: true }).not('completed_at', 'is', null),
-          supabase.from('workout_sessions').select('id', { count: 'exact', head: true }).not('completed_at', 'is', null).gte('completed_at', weekAgo),
-          supabase.from('workout_sessions').select('id, completed_at, workout_days(day_name), exercise_logs(exercise_sets(id))')
+          supabase.from('workout_sessions').select('id, exercise_logs!inner(exercise_sets!inner(id))', { count: 'exact', head: true }).not('completed_at', 'is', null),
+          supabase.from('workout_sessions').select('id, exercise_logs!inner(exercise_sets!inner(id))', { count: 'exact', head: true }).not('completed_at', 'is', null).gte('completed_at', weekAgo),
+          supabase.from('workout_sessions').select('id, completed_at, workout_days(day_name), exercise_logs!inner(exercise_sets!inner(id))')
             .not('completed_at', 'is', null).order('completed_at', { ascending: false }).limit(3),
         ]);
         h.total = total ?? 0; h.weekCount = week ?? 0;
