@@ -2,6 +2,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import ExercisePicker from '../components/ExercisePicker';
+import { TEMPLATES } from '../lib/templates';
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 type Plan = { id: string; name: string };
 type Day = { id: string; day_name: string; sort_order: number };
@@ -25,6 +28,12 @@ export default function PlanPage() {
   const [repMin, setRepMin] = useState('');
   const [repMax, setRepMax] = useState('');
   const [message, setMessage] = useState('');
+  const [tplId, setTplId] = useState(TEMPLATES[0].id);
+  const [busy, setBusy] = useState(false);
+  const [editId, setEditId] = useState('');
+  const [editSets, setEditSets] = useState('');
+  const [editMin, setEditMin] = useState('');
+  const [editMax, setEditMax] = useState('');
 
   useEffect(() => { loadPlans(); }, []);
   useEffect(() => { if (planId) loadDays(planId); else { setDays([]); setDayId(''); } }, [planId]);
@@ -68,6 +77,69 @@ export default function PlanPage() {
     if (error) return setMessage('Error: ' + error.message);
     setMessage('Added: ' + exerciseName); setExerciseName(''); await loadExercises(dayId);
   }
+  async function applyTemplate() {
+    const tpl = TEMPLATES.find(t => t.id === tplId);
+    if (!tpl || busy) return;
+    setBusy(true);
+    // Match template names to the exercise library so names are consistent.
+    const { data: lib } = await supabase.from('exercises').select('name');
+    const names = (lib ?? []).map(e => e.name as string);
+    const resolve = (want: string) => {
+      const exact = names.find(n => norm(n) === norm(want));
+      if (exact) return exact;
+      const tokens = norm(want).split(' ');
+      const hits = names.filter(n => { const x = norm(n); return tokens.every(t => x.includes(t)); });
+      hits.sort((a, b) => a.length - b.length);
+      return hits[0] ?? want;
+    };
+    const { data: plan, error: pErr } = await supabase.from('workout_plans').insert([{ name: tpl.name }]).select().single();
+    if (pErr || !plan) { setBusy(false); return setMessage('Error: ' + (pErr?.message ?? 'could not create plan')); }
+    const { data: newDays, error: dErr } = await supabase.from('workout_days')
+      .insert(tpl.days.map((d, i) => ({ plan_id: plan.id, day_name: d.name, sort_order: i }))).select('id, sort_order');
+    if (dErr || !newDays) { setBusy(false); return setMessage('Error: ' + (dErr?.message ?? 'could not create days')); }
+    const rows = newDays.flatMap(nd => tpl.days[nd.sort_order].exercises.map(([name, s, mn, mx], j) => ({
+      workout_day_id: nd.id, exercise_name: resolve(name), target_sets: s, rep_min: mn, rep_max: mx, sort_order: j,
+    })));
+    const { error: eErr } = await supabase.from('plan_exercises').insert(rows);
+    setBusy(false);
+    if (eErr) return setMessage('Error: ' + eErr.message);
+    await loadPlans(); setPlanId(plan.id);
+    setMessage(tpl.name + ' added. Rename days or swap exercises below to make it yours.');
+  }
+  async function renamePlan() {
+    const cur = plans.find(p => p.id === planId);
+    const name = prompt('Rename plan', cur?.name ?? '')?.trim();
+    if (!name || name === cur?.name) return;
+    const { error } = await supabase.from('workout_plans').update({ name }).eq('id', planId);
+    if (error) return setMessage('Error: ' + error.message);
+    await loadPlans();
+  }
+  async function renameDay() {
+    const cur = days.find(d => d.id === dayId);
+    const name = prompt('Rename day', cur?.day_name ?? '')?.trim();
+    if (!name || name === cur?.day_name) return;
+    const { error } = await supabase.from('workout_days').update({ day_name: name }).eq('id', dayId);
+    if (error) return setMessage('Error: ' + error.message);
+    await loadDays(planId);
+  }
+  function startEdit(ex: PlanEx) {
+    setEditId(ex.id); setEditSets(String(ex.target_sets)); setEditMin(String(ex.rep_min)); setEditMax(String(ex.rep_max));
+  }
+  async function saveEdit() {
+    const s = parseInt(editSets), mn = parseInt(editMin), mx = parseInt(editMax);
+    if (!s || !mn || !mx || mn > mx) return setMessage('Check the numbers: min reps must be at most max reps.');
+    const { error } = await supabase.from('plan_exercises').update({ target_sets: s, rep_min: mn, rep_max: mx }).eq('id', editId);
+    if (error) return setMessage('Error: ' + error.message);
+    setEditId(''); await loadExercises(dayId);
+  }
+  async function moveExercise(index: number, dir: -1 | 1) {
+    const j = index + dir;
+    if (j < 0 || j >= exercises.length) return;
+    const next = [...exercises];
+    [next[index], next[j]] = [next[j], next[index]];
+    setExercises(next);
+    await Promise.all(next.map((ex, i) => supabase.from('plan_exercises').update({ sort_order: i }).eq('id', ex.id)));
+  }
   async function removeExercise(id: string) {
     await supabase.from('plan_exercises').delete().eq('id', id); await loadExercises(dayId);
   }
@@ -86,12 +158,22 @@ export default function PlanPage() {
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Your Plan</h1>
 
       <div style={card}>
+        <h2 style={h2}>Start from a template</h2>
+        <select value={tplId} onChange={e => setTplId(e.target.value)} style={{ ...input, marginBottom: '0.5rem' }}>
+          {TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <p style={{ color: '#777', fontSize: '13px', marginBottom: '0.75rem' }}>{TEMPLATES.find(t => t.id === tplId)?.blurb}</p>
+        <button onClick={applyTemplate} disabled={busy} style={{ ...btn, opacity: busy ? 0.6 : 1 }}>{busy ? 'Adding...' : 'Use This Template'}</button>
+      </div>
+
+      <div style={card}>
         <h2 style={h2}>Plan</h2>
         {plans.length > 0 && (
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
             <select value={planId} onChange={e => setPlanId(e.target.value)} style={input}>
               {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
+            {planId && <button onClick={renamePlan} style={{ ...btn, width: 'auto', background: '#1a1a1a', color: '#fff' }}>Rename</button>}
             {planId && <button onClick={() => removePlan(planId)} style={{ ...btn, width: 'auto', background: '#2a1111', color: '#f87171' }}>Delete</button>}
           </div>
         )}
@@ -119,16 +201,36 @@ export default function PlanPage() {
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <h2 style={{ ...h2, marginBottom: 0 }}>{days.find(d => d.id === dayId)?.day_name}</h2>
-            <button onClick={() => removeDay(dayId)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '13px' }}>Delete day</button>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button onClick={renameDay} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '13px' }}>Rename</button>
+              <button onClick={() => removeDay(dayId)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '13px' }}>Delete day</button>
+            </div>
           </div>
 
-          {exercises.map(ex => (
-            <div key={ex.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0', borderBottom: '1px solid #222' }}>
-              <div>
-                <div style={{ fontSize: '15px' }}>{ex.exercise_name}</div>
-                <div style={{ fontSize: '12px', color: '#777' }}>{ex.target_sets} sets × {ex.rep_min}-{ex.rep_max} reps</div>
+          {exercises.map((ex, i) => (
+            <div key={ex.id} style={{ padding: '0.6rem 0', borderBottom: '1px solid #222' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                <div onClick={() => (editId === ex.id ? setEditId('') : startEdit(ex))} style={{ cursor: 'pointer', minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '15px' }}>{ex.exercise_name}</div>
+                  <div style={{ fontSize: '12px', color: '#777' }}>{ex.target_sets} sets × {ex.rep_min}-{ex.rep_max} reps · tap to edit</div>
+                </div>
+                <button onClick={() => moveExercise(i, -1)} disabled={i === 0} aria-label="Move up" style={{ background: 'none', border: 'none', color: i === 0 ? '#333' : '#aaa', cursor: 'pointer', fontSize: '16px' }}>▲</button>
+                <button onClick={() => moveExercise(i, 1)} disabled={i === exercises.length - 1} aria-label="Move down" style={{ background: 'none', border: 'none', color: i === exercises.length - 1 ? '#333' : '#aaa', cursor: 'pointer', fontSize: '16px' }}>▼</button>
+                <button onClick={() => removeExercise(ex.id)} aria-label="Remove" style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '18px' }}>✕</button>
               </div>
-              <button onClick={() => removeExercise(ex.id)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '18px' }}>✕</button>
+              {editId === ex.id && (
+                <div style={{ marginTop: '0.6rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    {[['Sets', editSets, setEditSets], ['Min reps', editMin, setEditMin], ['Max reps', editMax, setEditMax]].map(([label, value, set]) => (
+                      <div key={label as string} style={{ minWidth: 0 }}>
+                        <label style={{ display: 'block', color: '#888', fontSize: '12px', marginBottom: '4px' }}>{label as string}</label>
+                        <input type="number" style={input} value={value as string} onChange={e => (set as (v: string) => void)(e.target.value)} />
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={saveEdit} style={btn}>Save</button>
+                </div>
+              )}
             </div>
           ))}
           {exercises.length === 0 && <p style={{ color: '#666', fontSize: '14px', marginBottom: '0.75rem' }}>No exercises yet.</p>}
