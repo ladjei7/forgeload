@@ -139,8 +139,9 @@ export default function LibraryPage() {
       clearFacetCache();
       setNote(form.id ? 'Saved.' : `Created "${name}".`);
       setForm(null); setTab('mine'); await load(false, 0);
-    } catch {
-      setFormError('Could not save. Check your connection and try again.');
+    } catch (e) {
+      const msg = (e as { message?: string })?.message;
+      setFormError(`Could not save${msg ? `: ${msg}` : '. Check your connection and try again.'}`);
     } finally {
       setSaving(false);
     }
