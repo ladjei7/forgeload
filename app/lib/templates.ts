@@ -69,11 +69,14 @@ export const TEMPLATES: PlanTemplate[] = [
   {
     id: 'ppl',
     name: 'Push Pull Legs (PPL)',
-    blurb: '3 days. Pushing, pulling, then legs.',
+    blurb: '6 days. Push, Pull, Legs, run twice a week.',
     days: [
-      { name: 'Push', exercises: PUSH },
-      { name: 'Pull', exercises: PULL },
-      { name: 'Legs', exercises: LEGS },
+      { name: 'Push A', exercises: PUSH },
+      { name: 'Pull A', exercises: PULL },
+      { name: 'Legs A', exercises: LEGS },
+      { name: 'Push B', exercises: PUSH },
+      { name: 'Pull B', exercises: PULL },
+      { name: 'Legs B', exercises: LEGS },
     ],
   },
   {
