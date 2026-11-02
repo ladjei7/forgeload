@@ -8,7 +8,7 @@ import { localDateString } from '../lib/dates';
 
 type Plan = { id: string; name: string };
 type Day = { id: string; day_name: string; sort_order: number };
-type PlanEx = { id: string; exercise_name: string; target_sets: number; rep_min: number; rep_max: number };
+type PlanEx = { id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number };
 type SetRow = { weight: string; reps: string; done: boolean; setId?: string };
 type Session = { id: string; workout_day_id: string; started_at: string };
 type Prev = { sets: PrevSet[] };
@@ -19,6 +19,7 @@ type Summary = {
 
 type HistRow = {
   exercise_name: string;
+  exercise_id: string | null;
   workout_sessions: { completed_at: string } | { completed_at: string }[] | null;
   exercise_sets: { set_number: number; reps: number; weight: number }[] | null;
 };
@@ -61,7 +62,7 @@ export default function LogPage() {
 
   const loadDayContext = useCallback(async (day: string, activeSession: Session | null) => {
     const { data: exData } = await supabase
-      .from('plan_exercises').select('id, exercise_name, target_sets, rep_min, rep_max')
+      .from('plan_exercises').select('id, exercise_name, exercise_id, target_sets, rep_min, rep_max')
       .eq('workout_day_id', day).order('sort_order');
     const list = (exData ?? []) as PlanEx[];
     setExercises(list);
@@ -70,17 +71,25 @@ export default function LogPage() {
     const prevMap: Record<string, Prev> = {};
     const best: Record<string, number> = {};
     if (list.length) {
+      // A past log belongs to a plan exercise if it has the same exercise_id (survives renames)
+      // or, for older rows without an id, the same name. Different exercises never share history.
+      const quoted = list.map(e => `"${e.exercise_name.replace(/"/g, '\\"')}"`).join(',');
+      const ids = list.map(e => e.exercise_id).filter(Boolean).join(',');
       const { data: hist } = await supabase
         .from('exercise_logs')
-        .select('exercise_name, workout_sessions!inner(completed_at), exercise_sets(set_number, reps, weight)')
-        .in('exercise_name', list.map(e => e.exercise_name))
+        .select('exercise_name, exercise_id, workout_sessions!inner(completed_at), exercise_sets(set_number, reps, weight)')
+        .or(ids ? `exercise_name.in.(${quoted}),exercise_id.in.(${ids})` : `exercise_name.in.(${quoted})`)
         .not('workout_sessions.completed_at', 'is', null)
         .limit(1000);
+      const planById = new Map(list.filter(e => e.exercise_id).map(e => [e.exercise_id as string, e.exercise_name]));
+      const planByName = new Map(list.map(e => [e.exercise_name.trim().toLowerCase(), e.exercise_name]));
       const byName: Record<string, { at: string; sets: HistRow['exercise_sets'] }[]> = {};
       for (const r of (hist ?? []) as unknown as HistRow[]) {
+        const key = (r.exercise_id && planById.get(r.exercise_id)) || planByName.get(r.exercise_name.trim().toLowerCase());
+        if (!key) continue;
         const at = one(r.workout_sessions)?.completed_at ?? '';
-        (byName[r.exercise_name] ??= []).push({ at, sets: r.exercise_sets });
-        for (const s of r.exercise_sets ?? []) if (s.reps > 0) best[r.exercise_name] = Math.max(best[r.exercise_name] ?? 0, s.weight);
+        (byName[key] ??= []).push({ at, sets: r.exercise_sets });
+        for (const s of r.exercise_sets ?? []) if (s.reps > 0) best[key] = Math.max(best[key] ?? 0, s.weight);
       }
       for (const [name, entries] of Object.entries(byName)) {
         entries.sort((a, b) => b.at.localeCompare(a.at));
@@ -266,7 +275,7 @@ export default function LogPage() {
     if (existing) return existing;
     const p = (async () => {
       const { data, error: err } = await supabase.from('exercise_logs').insert([{
-        workout_session_id: session!.id, exercise_name: ex.exercise_name,
+        workout_session_id: session!.id, exercise_name: ex.exercise_name, exercise_id: ex.exercise_id,
         target_sets: ex.target_sets, target_rep_min: ex.rep_min, target_rep_max: ex.rep_max,
       }]).select('id').single();
       if (err || !data) { delete logIds.current[ex.exercise_name]; throw err ?? new Error('no log'); }

@@ -24,6 +24,7 @@ export default function PlanPage() {
   const [planName, setPlanName] = useState('');
   const [dayName, setDayName] = useState('');
   const [exerciseName, setExerciseName] = useState('');
+  const [exerciseId, setExerciseId] = useState('');
   const [sets, setSets] = useState('');
   const [repMin, setRepMin] = useState('');
   const [repMax, setRepMax] = useState('');
@@ -71,34 +72,39 @@ export default function PlanPage() {
   async function addExercise() {
     if (!exerciseName.trim() || !dayId || !sets || !repMin || !repMax) return setMessage('Fill in the exercise, sets, min reps, and max reps.');
     const { error } = await supabase.from('plan_exercises').insert([{
-      workout_day_id: dayId, exercise_name: exerciseName.trim(),
+      workout_day_id: dayId, exercise_name: exerciseName.trim(), exercise_id: exerciseId || null,
       target_sets: parseInt(sets), rep_min: parseInt(repMin), rep_max: parseInt(repMax), sort_order: exercises.length,
     }]);
     if (error) return setMessage('Error: ' + error.message);
-    setMessage('Added: ' + exerciseName); setExerciseName(''); await loadExercises(dayId);
+    setMessage('Added: ' + exerciseName); setExerciseName(''); setExerciseId(''); await loadExercises(dayId);
   }
   async function applyTemplate() {
     const tpl = TEMPLATES.find(t => t.id === tplId);
     if (!tpl || busy) return;
     setBusy(true);
-    // Match template names to the exercise library so names are consistent.
-    const { data: lib } = await supabase.from('exercises').select('name');
-    const names = (lib ?? []).map(e => e.name as string);
-    const resolve = (want: string) => {
-      const exact = names.find(n => norm(n) === norm(want));
-      if (exact) return exact;
-      const tokens = norm(want).split(' ');
-      const hits = names.filter(n => { const x = norm(n); return tokens.every(t => x.includes(t)); });
-      hits.sort((a, b) => a.length - b.length);
-      return hits[0] ?? want;
-    };
+    // Link each template exercise to a catalog exercise (by id) using the database search.
+    // Exact name first; otherwise the shortest result containing every word; otherwise keep
+    // the template's own name with no link, so nothing is ever guessed.
+    const wanted = [...new Set(tpl.days.flatMap(d => d.exercises.map(e => e[0])))];
+    const found: Record<string, { id: string; name: string } | null> = {};
+    await Promise.all(wanted.map(async w => {
+      const { data } = await supabase.rpc('search_exercises', { q: w, lim: 10 });
+      const rows = (data ?? []) as { id: string; name: string }[];
+      const exact = rows.find(r => norm(r.name) === norm(w));
+      if (exact) { found[w] = exact; return; }
+      const tokens = norm(w).split(' ');
+      const hits = rows.filter(r => { const x = norm(r.name); return tokens.every(t => x.includes(t)); });
+      hits.sort((a, b) => a.name.length - b.name.length);
+      found[w] = hits[0] ?? null;
+    }));
+    const resolve = (want: string) => ({ name: found[want]?.name ?? want, id: found[want]?.id ?? null });
     const { data: plan, error: pErr } = await supabase.from('workout_plans').insert([{ name: tpl.name }]).select().single();
     if (pErr || !plan) { setBusy(false); return setMessage('Error: ' + (pErr?.message ?? 'could not create plan')); }
     const { data: newDays, error: dErr } = await supabase.from('workout_days')
       .insert(tpl.days.map((d, i) => ({ plan_id: plan.id, day_name: d.name, sort_order: i }))).select('id, sort_order');
     if (dErr || !newDays) { setBusy(false); return setMessage('Error: ' + (dErr?.message ?? 'could not create days')); }
     const rows = newDays.flatMap(nd => tpl.days[nd.sort_order].exercises.map(([name, s, mn, mx], j) => ({
-      workout_day_id: nd.id, exercise_name: resolve(name), target_sets: s, rep_min: mn, rep_max: mx, sort_order: j,
+      workout_day_id: nd.id, exercise_name: resolve(name).name, exercise_id: resolve(name).id, target_sets: s, rep_min: mn, rep_max: mx, sort_order: j,
     })));
     const { error: eErr } = await supabase.from('plan_exercises').insert(rows);
     setBusy(false);
@@ -236,7 +242,7 @@ export default function PlanPage() {
           {exercises.length === 0 && <p style={{ color: '#666', fontSize: '14px', marginBottom: '0.75rem' }}>No exercises yet.</p>}
 
           <div style={{ marginTop: '1rem' }}>
-            <ExercisePicker value={exerciseName} onChange={setExerciseName} />
+            <ExercisePicker value={exerciseName} onChange={setExerciseName} onPick={ex => setExerciseId(ex?.id ?? '')} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
               {[['Sets', sets, setSets], ['Min reps', repMin, setRepMin], ['Max reps', repMax, setRepMax]].map(([label, value, set]) => (
                 <div key={label as string} style={{ minWidth: 0 }}>
