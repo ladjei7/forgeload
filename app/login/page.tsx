@@ -15,7 +15,7 @@ export default function LoginPage() {
     const { data, error } =
       mode === 'signin'
         ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
+        : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
     if (error) { setMessage(error.message); return; }
     if (mode === 'signup' && !data.session) {
       setMessage('Check your email to confirm your account, then sign in.');
