@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { TEMPLATES } from '../lib/templates';
 import { recommendPlan, tailorTemplate, GOAL_NOTE, TIME_NOTE, type Experience, type Goal, type Minutes } from '../lib/recommend';
 import { createPlanFromTemplate } from '../lib/applyTemplate';
+import { applyComfort, type Comfort } from '../lib/comfort';
+import { supabase } from '../lib/supabase';
 
 type Choice<T> = { id: T; icon: string; title: string; sub: string };
 
@@ -31,12 +33,20 @@ const TIMES: Choice<Minutes>[] = [
   { id: 90, icon: '🕰️', title: '75 minutes or more', sub: 'No rush' },
 ];
 
-const STEPS = ['days', 'experience', 'goal', 'time'] as const;
+const COMFORTS: Choice<Comfort>[] = [
+  { id: 'machines', icon: '🛠️', title: 'Mostly machines', sub: 'I prefer guided movements while getting comfortable.' },
+  { id: 'mixed', icon: '🔀', title: 'Machines and dumbbells', sub: 'I like a combination of both.' },
+  { id: 'all', icon: '🏋️', title: 'All gym equipment', sub: 'I am comfortable with barbells, dumbbells, and machines.' },
+  { id: 'unsure', icon: '🤷', title: 'I am not sure', sub: 'Choose for me.' },
+];
+
+const STEPS = ['days', 'experience', 'goal', 'time', 'comfort'] as const;
 const QUESTION = {
   days: ['How many days a week can you train?', 'Be realistic. A plan you can keep beats a perfect one.'],
   experience: ['How long have you been lifting?', 'This helps us avoid starting you too hard.'],
   goal: ['What is your main goal?', 'This sets how heavy your main lifts are.'],
   time: ['How long is a typical workout?', 'We will fit the plan to your time.'],
+  comfort: ['What exercises would you feel most comfortable starting with?', 'This only picks your starting exercises. You can change it any time, and you can swap any exercise later.'],
 } as const;
 
 function Card<T extends string | number>({ c, on, pick }: { c: Choice<T>; on: boolean; pick: (v: T) => void }) {
@@ -58,6 +68,7 @@ export default function StartPage() {
   const [exp, setExp] = useState<Experience | ''>('');
   const [goal, setGoal] = useState<Goal | ''>('');
   const [mins, setMins] = useState<Minutes | 0>(0);
+  const [comfort, setComfort] = useState<Comfort | ''>('');
   const [picked, setPicked] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -66,7 +77,8 @@ export default function StartPage() {
   const rec = days && exp ? recommendPlan(days, exp) : null;
   const chosenId = picked || rec?.primary || '';
   const base = TEMPLATES.find(t => t.id === chosenId);
-  const tpl = base && goal && mins ? tailorTemplate(base, goal, mins) : null;
+  const adapted = base && comfort ? applyComfort(base, comfort) : null;
+  const tpl = adapted && goal && mins ? tailorTemplate(adapted.tpl, goal, mins) : null;
 
   function answer(setter: () => void) { setter(); setPicked(''); setTimeout(() => setStep(s => s + 1), 180); }
 
@@ -75,12 +87,16 @@ export default function StartPage() {
     setBusy(true); setError('');
     const res = await createPlanFromTemplate(tpl);
     if ('error' in res) { setBusy(false); return setError('Could not create the plan: ' + res.error); }
-    try { localStorage.setItem('fl-plan', res.planId); } catch { /* optional */ }
+    try { localStorage.setItem('fl-plan', res.planId); localStorage.setItem('fl-comfort', comfort); } catch { /* optional */ }
+    try { // best effort: the plan is already created even if preferences cannot be saved
+      const { data: u } = await supabase.auth.getUser();
+      if (u.user && comfort) await supabase.from('user_training_prefs').upsert({ user_id: u.user.id, comfort, session_minutes: mins || null, updated_at: new Date().toISOString() });
+    } catch { /* optional */ }
     router.push('/');
   }
 
   const bar = (
-    <div className="mb-6 flex gap-2" aria-label={`Step ${Math.min(step + 1, 4)} of 4`}>
+    <div className="mb-6 flex gap-2" aria-label={`Step ${Math.min(step + 1, STEPS.length)} of ${STEPS.length}`}>
       {STEPS.map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i < step || done ? 'bg-green-400' : i === step ? 'bg-green-400/50' : 'bg-[#222]'}`} />)}
     </div>
   );
@@ -97,6 +113,7 @@ export default function StartPage() {
           {key === 'experience' && EXP.map(c => <Card key={c.id} c={c} on={exp === c.id} pick={v => answer(() => setExp(v))} />)}
           {key === 'goal' && GOALS.map(c => <Card key={c.id} c={c} on={goal === c.id} pick={v => answer(() => setGoal(v))} />)}
           {key === 'time' && TIMES.map(c => <Card key={c.id} c={c} on={mins === c.id} pick={v => answer(() => setMins(v))} />)}
+          {key === 'comfort' && COMFORTS.map(c => <Card key={c.id} c={c} on={comfort === c.id} pick={v => answer(() => setComfort(v))} />)}
         </div>
         <div className="mt-6 flex items-center justify-between text-sm">
           {step > 0 ? <button onClick={() => setStep(step - 1)} className="h-11 px-2 text-[#aaa]">← Back</button> : <span />}
@@ -106,7 +123,7 @@ export default function StartPage() {
     );
   }
 
-  const chips = [`${days} days a week`, EXP.find(e => e.id === exp)?.title, GOALS.find(g => g.id === goal)?.title, TIMES.find(t => t.id === mins)?.title];
+  const chips = [`${days} days a week`, EXP.find(e => e.id === exp)?.title, GOALS.find(g => g.id === goal)?.title, TIMES.find(t => t.id === mins)?.title, COMFORTS.find(c => c.id === comfort)?.title];
   const others = rec ? [rec.primary, ...rec.alternatives].filter(id => id !== chosenId) : [];
 
   return (
@@ -124,6 +141,7 @@ export default function StartPage() {
             <p><span className="font-semibold text-white">Why this split. </span>{rec.why}</p>
             <p><span className="font-semibold text-white">Your goal. </span>{GOAL_NOTE[goal as Goal]}</p>
             <p><span className="font-semibold text-white">Your time. </span>{TIME_NOTE[mins as Minutes]}</p>
+            {adapted && adapted.notes.length > 0 && <p><span className="font-semibold text-white">Your comfort. </span>{adapted.notes.join(' ')}</p>}
           </div>
           <div className="mb-4 space-y-3">
             {tpl.days.map((d, i) => (
@@ -132,7 +150,7 @@ export default function StartPage() {
                   <span className="font-semibold">{d.name}</span><span className="text-sm text-[#777]">{d.exercises.length} exercises</span>
                 </summary>
                 <ul className="mt-2 space-y-1 text-sm">
-                  {d.exercises.map((e, j) => <li key={j} className="flex justify-between gap-3"><span>{e[0]}</span><span className="shrink-0 text-[#777]">{e[1]} × {e[2]}-{e[3]}</span></li>)}
+                  {d.exercises.map((e, j) => <li key={j} className="flex justify-between gap-3"><span>{e[0]}{adapted?.swapped[e[0]] && <span className="block text-xs text-[#777]">Instead of {adapted.swapped[e[0]]}</span>}</span><span className="shrink-0 text-[#777]">{e[1]} × {e[2]}-{e[3]}</span></li>)}
                 </ul>
               </details>
             ))}

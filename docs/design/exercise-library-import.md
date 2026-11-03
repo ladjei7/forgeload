@@ -19,3 +19,9 @@ Rules only: `scripts/repdb/map.ts` (mapping), `scripts/repdb/build-sql.ts` (gene
 - The movement pattern is a name-based guess for about half the rows and is not trusted for plans until reviewed.
 - Images are not imported. They must not go in `public/` (that would publish them). Plan: a private Supabase Storage bucket readable by signed-in users only.
 - If built-in exercises are readable with the public anon key, anyone could pull the whole set through the API. Restrict reads to signed-in users before beta.
+
+## After the import: curation and real-app wiring
+- `008_curate_plan_eligible.sql` marks 42 hand-reviewed exercises plan-eligible with reviewed pattern and comfort level (the machine, dumbbell and barbell versions the comfort question chooses between). Run it after the import. It should report 42.
+- Real app: `/start` now asks the comfort question and builds the starter plan through `app/lib/comfort.ts` (lookup tables, 5 tests). Comfort is saved best-effort to `user_training_prefs` and never blocks plan creation. Every swapped exercise shows "Instead of ...".
+- `supabase/diagnostics/exercise_read_policies.sql` is read-only. Run it and paste the result so we can restrict reads of the library to signed-in users without breaking login or search.
+- Still prototype-only: suggestions (`adapt.ts`), the Free/Pro demo, and the Home suggestion card. They move into the real app next, Free rules first.
