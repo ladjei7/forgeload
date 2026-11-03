@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 
@@ -28,7 +29,9 @@ export default function LoginPage() {
 
   return (
     <main style={{ minHeight: '100vh', background: '#000', color: '#fff', padding: '2rem', maxWidth: '400px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>FORGELOAD</h1>
+      <h1 style={{ margin: '0 0 1.25rem' }}>
+        <Image src="/logo.png" alt="Forgeload" width={640} height={616} priority style={{ width: '70%', maxWidth: 260, height: 'auto', display: 'block', margin: '0 auto' }} />
+      </h1>
       <p style={{ color: '#666', marginBottom: '2rem' }}>{mode === 'signin' ? 'Sign in to your account' : 'Create your account'}</p>
       <input style={input} type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
       <input style={input} type="password" placeholder="Password (6+ characters)" value={password} onChange={e => setPassword(e.target.value)} />
