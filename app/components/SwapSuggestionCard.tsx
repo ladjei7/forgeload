@@ -47,22 +47,22 @@ export default function SwapSuggestionCard() {
   function dismiss(s: SwapSuggestion) { logEvent('suggestion', { sid: s.sid, action: 'dismissed' }); setSug(null); }
 
   if (undo) return (
-    <section className="flex items-center justify-between gap-3 rounded-2xl bg-[#111] p-4 text-sm">
-      <span className="text-green-400">{undo.msg}</span>
-      <button onClick={undoAccept} disabled={busy} className="h-10 shrink-0 rounded-xl border border-green-400 px-4 text-green-400">Undo</button>
+    <section className="flex items-center justify-between gap-3 rounded-2xl bg-fl-s1 border border-fl-line p-4 text-sm">
+      <span className="text-fl-ok">{undo.msg}</span>
+      <button onClick={undoAccept} disabled={busy} className="h-10 shrink-0 rounded-xl border border-fl-ok px-4 text-fl-ok">Undo</button>
     </section>
   );
   if (!sug) return null;
   const n = sug.rows.length;
   return (
-    <section className="rounded-2xl bg-[#111] p-5" aria-label="Suggestion">
-      <div className="text-xs uppercase tracking-wide text-[#777]">Suggestion · optional</div>
+    <section className="rounded-2xl bg-fl-s1 border border-fl-line p-5" aria-label="Suggestion">
+      <div className="text-xs uppercase tracking-wide text-fl-tx2">Suggestion · optional</div>
       <h2 className="mb-1 mt-1 text-lg font-bold">Use {sug.to.name} instead of {sug.from.name}?</h2>
-      <p className="mb-3 text-sm text-[#aaa]">You swapped it {sug.count} times in the last month. Making it the default saves you the swap{n > 1 ? ` in ${n} workouts` : ''}. Your past {sug.from.name} sets stay in your history.</p>
-      {err && <p role="alert" className="mb-2 text-sm text-red-300">{err}</p>}
+      <p className="mb-3 text-sm text-fl-tx2">You swapped it {sug.count} times in the last month. Making it the default saves you the swap{n > 1 ? ` in ${n} workouts` : ''}. Your past {sug.from.name} sets stay in your history.</p>
+      {err && <p role="alert" className="mb-2 text-sm text-fl-bad">{err}</p>}
       <div className="flex gap-2">
-        <button onClick={() => accept(sug)} disabled={busy} className="h-11 flex-1 rounded-xl bg-green-400 font-bold text-black disabled:opacity-60">{busy ? 'Saving...' : 'Make it the default'}</button>
-        <button onClick={() => dismiss(sug)} disabled={busy} className="h-11 rounded-xl bg-[#222] px-4 text-sm">No thanks</button>
+        <button onClick={() => accept(sug)} disabled={busy} className="h-11 flex-1 rounded-xl bg-fl-acc font-bold text-fl-on-acc disabled:opacity-60">{busy ? 'Saving...' : 'Make it the default'}</button>
+        <button onClick={() => dismiss(sug)} disabled={busy} className="h-11 rounded-xl bg-fl-s2 px-4 text-sm">No thanks</button>
       </div>
     </section>
   );

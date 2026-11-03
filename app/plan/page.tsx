@@ -12,9 +12,9 @@ type Plan = { id: string; name: string };
 type Day = { id: string; day_name: string; sort_order: number };
 type PlanEx = { id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number };
 
-const card = { background: '#111', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem' } as const;
-const input = { width: '100%', boxSizing: 'border-box', minWidth: 0, padding: '0.75rem', borderRadius: '8px', border: '1px solid #333', background: '#1a1a1a', color: '#fff', fontSize: '16px' } as const;
-const btn = { width: '100%', padding: '0.75rem', borderRadius: '8px', background: '#fff', color: '#000', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', border: 'none' } as const;
+const card = { background: 'var(--fl-s1)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem' } as const;
+const input = { width: '100%', boxSizing: 'border-box', minWidth: 0, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--fl-line)', background: 'var(--fl-s2)', color: 'var(--fl-tx)', fontSize: '16px' } as const;
+const btn = { width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--fl-acc)', color: 'var(--fl-on-acc)', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', border: 'none' } as const;
 const h2 = { fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '0.75rem' } as const;
 
 export default function PlanPage() {
@@ -168,16 +168,16 @@ export default function PlanPage() {
 }
 
   return (
-    <main style={{ minHeight: '100vh', background: '#000', color: '#fff', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
+    <main style={{ minHeight: '100vh', background: 'var(--fl-bg)', color: 'var(--fl-tx)', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Your Plan</h1>
-      <Link href="/library" style={{ display: 'inline-block', marginBottom: '1rem', color: '#4ade80' }}>Browse exercise library →</Link>
+      <Link href="/library" style={{ display: 'inline-block', marginBottom: '1rem', color: 'var(--fl-acc)' }}>Browse exercise library →</Link>
 
       <div style={card}>
         <h2 style={h2}>Start from a template</h2>
         <select value={tplId} onChange={e => setTplId(e.target.value)} style={{ ...input, marginBottom: '0.5rem' }}>
           {TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
-        <p style={{ color: '#777', fontSize: '13px', marginBottom: '0.75rem' }}>{TEMPLATES.find(t => t.id === tplId)?.blurb}</p>
+        <p style={{ color: 'var(--fl-tx2)', fontSize: '13px', marginBottom: '0.75rem' }}>{TEMPLATES.find(t => t.id === tplId)?.blurb}</p>
         <button onClick={applyTemplate} disabled={busy} style={{ ...btn, opacity: busy ? 0.6 : 1 }}>{busy ? 'Adding...' : 'Use This Template'}</button>
       </div>
 
@@ -188,8 +188,8 @@ export default function PlanPage() {
             <select value={planId} onChange={e => setPlanId(e.target.value)} style={input}>
               {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-            {planId && <button onClick={renamePlan} style={{ ...btn, width: 'auto', background: '#1a1a1a', color: '#fff' }}>Rename</button>}
-            {planId && <button onClick={() => removePlan(planId)} style={{ ...btn, width: 'auto', background: '#2a1111', color: '#f87171' }}>Delete</button>}
+            {planId && <button onClick={renamePlan} style={{ ...btn, width: 'auto', background: 'var(--fl-s2)', color: 'var(--fl-tx)' }}>Rename</button>}
+            {planId && <button onClick={() => removePlan(planId)} style={{ ...btn, width: 'auto', background: 'var(--fl-s2)', color: 'var(--fl-bad)' }}>Delete</button>}
           </div>
         )}
         <input style={{ ...input, marginBottom: '0.75rem' }} placeholder="New plan name (e.g. LURLPPR)" value={planName} onChange={e => setPlanName(e.target.value)} />
@@ -201,11 +201,11 @@ export default function PlanPage() {
           <h2 style={h2}>Days</h2>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
             {days.map(d => (
-              <button key={d.id} onClick={() => setDayId(d.id)} style={{ padding: '0.5rem 0.9rem', borderRadius: '999px', border: '1px solid #333', cursor: 'pointer', fontSize: '14px', background: d.id === dayId ? '#fff' : '#1a1a1a', color: d.id === dayId ? '#000' : '#fff' }}>
+              <button key={d.id} onClick={() => setDayId(d.id)} style={{ padding: '0.5rem 0.9rem', borderRadius: '999px', border: '1px solid var(--fl-line)', cursor: 'pointer', fontSize: '14px', background: d.id === dayId ? 'var(--fl-acc)' : 'var(--fl-s2)', color: d.id === dayId ? 'var(--fl-on-acc)' : 'var(--fl-tx)' }}>
                 {d.day_name}
               </button>
             ))}
-            {days.length === 0 && <p style={{ color: '#666', fontSize: '14px' }}>No days yet.</p>}
+            {days.length === 0 && <p style={{ color: 'var(--fl-tx2)', fontSize: '14px' }}>No days yet.</p>}
           </div>
           <input style={{ ...input, marginBottom: '0.75rem' }} placeholder="New day (e.g. Tuesday - Upper)" value={dayName} onChange={e => setDayName(e.target.value)} />
           <button onClick={addDay} style={btn}>Add Day</button>
@@ -217,28 +217,28 @@ export default function PlanPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <h2 style={{ ...h2, marginBottom: 0 }}>{days.find(d => d.id === dayId)?.day_name}</h2>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button onClick={renameDay} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '13px' }}>Rename</button>
-              <button onClick={() => removeDay(dayId)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '13px' }}>Delete day</button>
+              <button onClick={renameDay} style={{ background: 'none', border: 'none', color: 'var(--fl-tx2)', cursor: 'pointer', fontSize: '13px' }}>Rename</button>
+              <button onClick={() => removeDay(dayId)} style={{ background: 'none', border: 'none', color: 'var(--fl-bad)', cursor: 'pointer', fontSize: '13px' }}>Delete day</button>
             </div>
           </div>
 
           {exercises.map((ex, i) => (
-            <div key={ex.id} style={{ padding: '0.6rem 0', borderBottom: '1px solid #222' }}>
+            <div key={ex.id} style={{ padding: '0.6rem 0', borderBottom: '1px solid var(--fl-line)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
                 <div onClick={() => (editId === ex.id ? setEditId('') : startEdit(ex))} style={{ cursor: 'pointer', minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: '15px' }}>{ex.exercise_name}</div>
-                  <div style={{ fontSize: '12px', color: '#777' }}>{ex.target_sets} sets × {ex.rep_min}-{ex.rep_max} reps · tap to edit</div>
+                  <div style={{ fontSize: '12px', color: 'var(--fl-tx2)' }}>{ex.target_sets} sets × {ex.rep_min}-{ex.rep_max} reps · tap to edit</div>
                 </div>
-                <button onClick={() => moveExercise(i, -1)} disabled={i === 0} aria-label="Move up" style={{ background: 'none', border: 'none', color: i === 0 ? '#333' : '#aaa', cursor: 'pointer', fontSize: '16px' }}>▲</button>
-                <button onClick={() => moveExercise(i, 1)} disabled={i === exercises.length - 1} aria-label="Move down" style={{ background: 'none', border: 'none', color: i === exercises.length - 1 ? '#333' : '#aaa', cursor: 'pointer', fontSize: '16px' }}>▼</button>
-                <button onClick={() => removeExercise(ex.id)} aria-label="Remove" style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '18px' }}>✕</button>
+                <button onClick={() => moveExercise(i, -1)} disabled={i === 0} aria-label="Move up" style={{ background: 'none', border: 'none', color: i === 0 ? 'var(--fl-line)' : 'var(--fl-tx2)', cursor: 'pointer', fontSize: '16px' }}>▲</button>
+                <button onClick={() => moveExercise(i, 1)} disabled={i === exercises.length - 1} aria-label="Move down" style={{ background: 'none', border: 'none', color: i === exercises.length - 1 ? 'var(--fl-line)' : 'var(--fl-tx2)', cursor: 'pointer', fontSize: '16px' }}>▼</button>
+                <button onClick={() => removeExercise(ex.id)} aria-label="Remove" style={{ background: 'none', border: 'none', color: 'var(--fl-tx2)', cursor: 'pointer', fontSize: '18px' }}>✕</button>
               </div>
               {editId === ex.id && (
                 <div style={{ marginTop: '0.6rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
                     {[['Sets', editSets, setEditSets], ['Min reps', editMin, setEditMin], ['Max reps', editMax, setEditMax]].map(([label, value, set]) => (
                       <div key={label as string} style={{ minWidth: 0 }}>
-                        <label style={{ display: 'block', color: '#888', fontSize: '12px', marginBottom: '4px' }}>{label as string}</label>
+                        <label style={{ display: 'block', color: 'var(--fl-tx2)', fontSize: '12px', marginBottom: '4px' }}>{label as string}</label>
                         <input type="number" style={input} value={value as string} onChange={e => (set as (v: string) => void)(e.target.value)} />
                       </div>
                     ))}
@@ -246,28 +246,28 @@ export default function PlanPage() {
                   <button onClick={saveEdit} style={btn}>Save</button>
                   {repFor === ex.id ? (
                     <div style={{ marginTop: '0.75rem' }}>
-                      <div style={{ color: '#aaa', fontSize: '13px', marginBottom: '6px' }}>Replace {ex.exercise_name} with:</div>
+                      <div style={{ color: 'var(--fl-tx2)', fontSize: '13px', marginBottom: '6px' }}>Replace {ex.exercise_name} with:</div>
                       <ExercisePicker value={repName} onChange={setRepName} onPick={x => setRepId(x?.id ?? '')} />
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => replaceExercise(ex)} style={{ ...btn, background: '#4ade80' }}>Replace</button>
-                        <button onClick={() => { setRepFor(''); setRepName(''); setRepId(''); }} style={{ ...btn, background: '#222', color: '#fff' }}>Cancel</button>
+                        <button onClick={() => replaceExercise(ex)} style={{ ...btn, background: 'var(--fl-acc)' }}>Replace</button>
+                        <button onClick={() => { setRepFor(''); setRepName(''); setRepId(''); }} style={{ ...btn, background: 'var(--fl-s2)', color: 'var(--fl-tx)' }}>Cancel</button>
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => { setRepFor(ex.id); setRepName(''); setRepId(''); }} style={{ ...btn, background: '#222', color: '#fff', marginTop: '0.5rem' }}>Replace this exercise</button>
+                    <button onClick={() => { setRepFor(ex.id); setRepName(''); setRepId(''); }} style={{ ...btn, background: 'var(--fl-s2)', color: 'var(--fl-tx)', marginTop: '0.5rem' }}>Replace this exercise</button>
                   )}
                 </div>
               )}
             </div>
           ))}
-          {exercises.length === 0 && <p style={{ color: '#666', fontSize: '14px', marginBottom: '0.75rem' }}>No exercises yet.</p>}
+          {exercises.length === 0 && <p style={{ color: 'var(--fl-tx2)', fontSize: '14px', marginBottom: '0.75rem' }}>No exercises yet.</p>}
 
           <div style={{ marginTop: '1rem' }}>
             <ExercisePicker value={exerciseName} onChange={setExerciseName} onPick={ex => setExerciseId(ex?.id ?? '')} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
               {[['Sets', sets, setSets], ['Min reps', repMin, setRepMin], ['Max reps', repMax, setRepMax]].map(([label, value, set]) => (
                 <div key={label as string} style={{ minWidth: 0 }}>
-                  <label style={{ display: 'block', color: '#888', fontSize: '12px', marginBottom: '4px' }}>{label as string}</label>
+                  <label style={{ display: 'block', color: 'var(--fl-tx2)', fontSize: '12px', marginBottom: '4px' }}>{label as string}</label>
                   <input type="number" style={input} value={value as string} onChange={e => (set as (v: string) => void)(e.target.value)} />
                 </div>
               ))}
@@ -277,8 +277,8 @@ export default function PlanPage() {
         </div>
       )}
 
-      {undo && <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '1rem', color: '#4ade80', fontSize: '14px', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}><span>{undo.label}</span><button onClick={undoReplace} style={{ background: 'none', border: '1px solid #4ade80', color: '#4ade80', borderRadius: '8px', padding: '0.4rem 0.8rem', cursor: 'pointer', flexShrink: 0 }}>Undo</button></div>}
-      {message && <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '1rem', color: '#4ade80', fontSize: '14px' }}>{message}</div>}
+      {undo && <div style={{ background: 'var(--fl-s2)', borderRadius: '8px', padding: '1rem', color: 'var(--fl-acc)', fontSize: '14px', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}><span>{undo.label}</span><button onClick={undoReplace} style={{ background: 'none', border: '1px solid var(--fl-acc)', color: 'var(--fl-acc)', borderRadius: '8px', padding: '0.4rem 0.8rem', cursor: 'pointer', flexShrink: 0 }}>Undo</button></div>}
+      {message && <div style={{ background: 'var(--fl-s2)', borderRadius: '8px', padding: '1rem', color: 'var(--fl-ok)', fontSize: '14px' }}>{message}</div>}
     </main>
   );
 }

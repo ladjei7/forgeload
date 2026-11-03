@@ -20,8 +20,8 @@ type Home = {
 const one = <T,>(x: T | T[] | null | undefined): T | null => (Array.isArray(x) ? x[0] ?? null : x ?? null);
 function lsGet(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
 
-const card = 'rounded-2xl bg-[#111] p-5';
-const primary = 'flex h-14 w-full items-center justify-center rounded-xl bg-green-400 text-lg font-bold text-black';
+const card = 'rounded-2xl bg-fl-s1 border border-fl-line p-5';
+const primary = 'flex h-14 w-full items-center justify-center rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc';
 
 export default function HomePage() {
   const [data, setData] = useState<Home | null>(null);
@@ -94,43 +94,43 @@ export default function HomePage() {
   const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-8 pt-6 text-white">
+    <main className="mx-auto max-w-xl px-4 pb-8 pt-6 text-fl-tx">
       <h1 className="mb-1 text-3xl font-bold tracking-tight">Forgeload</h1>
-      <p className="mb-5 text-sm text-[#777]">Plan. Log. Overload.</p>
+      <p className="mb-5 text-sm text-fl-tx2">Plan. Log. Overload.</p>
 
-      {error && <p role="alert" className="mb-4 rounded-xl bg-[#2a1111] p-3 text-sm text-red-300">{error}</p>}
-      {!data && !error && <p className="text-[#777]">Loading...</p>}
+      {error && <p role="alert" className="mb-4 rounded-xl bg-fl-s2 p-3 text-sm text-fl-bad">{error}</p>}
+      {!data && !error && <p className="text-fl-tx2">Loading...</p>}
 
       {data && (
         <div className="space-y-4">
           {data.active ? (
             <section className={card}>
-              <div className="text-xs uppercase tracking-wide text-[#777]">In progress</div>
+              <div className="text-xs uppercase tracking-wide text-fl-tx2">In progress</div>
               <h2 className="mb-3 mt-1 text-2xl font-bold">{data.active.dayName}</h2>
               <Link href="/log" className={primary}>Continue workout</Link>
             </section>
           ) : data.planCount === 0 ? (
             <section className={card}>
               <h2 className="mb-1 text-2xl font-bold">Start with a plan</h2>
-              <p className="mb-4 text-[#aaa]">Answer two quick questions and get a plan that fits your week.</p>
+              <p className="mb-4 text-fl-tx2">Answer two quick questions and get a plan that fits your week.</p>
               <Link href="/start" className={primary}>Set up my plan</Link>
-              <Link href="/plan" className="mt-3 block text-center text-sm text-[#888] underline-offset-2 hover:underline">Or build it yourself</Link>
+              <Link href="/plan" className="mt-3 block text-center text-sm text-fl-tx2 underline-offset-2 hover:underline">Or build it yourself</Link>
             </section>
           ) : data.emptyPlan ? (
             <section className={card}>
               <h2 className="mb-1 text-2xl font-bold">{data.planName}</h2>
-              <p className="mb-4 text-[#aaa]">Your plan has no exercises yet. Add some to get your next workout.</p>
+              <p className="mb-4 text-fl-tx2">Your plan has no exercises yet. Add some to get your next workout.</p>
               <Link href="/plan" className={primary}>Add exercises</Link>
             </section>
           ) : data.next ? (
             <section className={card}>
-              <div className="text-xs uppercase tracking-wide text-[#777]">Up next · {data.planName}</div>
+              <div className="text-xs uppercase tracking-wide text-fl-tx2">Up next · {data.planName}</div>
               <h2 className="mb-2 mt-1 text-2xl font-bold">{data.next.dayName}</h2>
-              <p className="mb-4 text-sm text-[#aaa]">
+              <p className="mb-4 text-sm text-fl-tx2">
                 {data.next.exercises.slice(0, 4).join(', ')}{data.next.exercises.length > 4 ? ` + ${data.next.exercises.length - 4} more` : ''}
               </p>
               <Link href="/log" className={primary}>Start workout</Link>
-              <p className="mt-3 text-center text-xs text-[#666]">You can pick a different workout on the next screen.</p>
+              <p className="mt-3 text-center text-xs text-fl-tx2">You can pick a different workout on the next screen.</p>
             </section>
           ) : null}
 
@@ -139,41 +139,41 @@ export default function HomePage() {
           <section className="grid grid-cols-2 gap-3">
             <div className={card}>
               <div className="text-3xl font-bold tabular-nums">{data.weekCount}</div>
-              <div className="text-sm text-[#777]">workouts, last 7 days</div>
+              <div className="text-sm text-fl-tx2">workouts, last 7 days</div>
             </div>
             <div className={card}>
               <div className="text-3xl font-bold tabular-nums">{data.total}</div>
-              <div className="text-sm text-[#777]">workouts total</div>
+              <div className="text-sm text-fl-tx2">workouts total</div>
             </div>
           </section>
 
           <section className={card}>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-lg font-bold">Recent workouts</h2>
-              {data.recent.length > 0 && <Link href="/history" className="text-sm text-green-400">See all</Link>}
+              {data.recent.length > 0 && <Link href="/history" className="text-sm text-fl-acc">See all</Link>}
             </div>
             {data.recent.length === 0 ? (
-              <p className="text-sm text-[#777]">Nothing logged yet. Your finished workouts will show up here.</p>
+              <p className="text-sm text-fl-tx2">Nothing logged yet. Your finished workouts will show up here.</p>
             ) : (
               <ul className="space-y-2">
                 {data.recent.map(r => (
-                  <li key={r.id} className="flex items-center justify-between border-b border-[#222] pb-2 last:border-0 last:pb-0">
+                  <li key={r.id} className="flex items-center justify-between border-b border-fl-line pb-2 last:border-0 last:pb-0">
                     <span className="font-semibold">{r.dayName}</span>
-                    <span className="text-sm text-[#777]">{when(r.completedAt)} · {r.sets} sets</span>
+                    <span className="text-sm text-fl-tx2">{when(r.completedAt)} · {r.sets} sets</span>
                   </li>
                 ))}
               </ul>
             )}
           </section>
 
-          <Link href="/library" className="block text-center text-sm text-[#888] underline-offset-2 hover:underline">Browse the exercise library</Link>
+          <Link href="/library" className="block text-center text-sm text-fl-tx2 underline-offset-2 hover:underline">Browse the exercise library</Link>
 
           <section className={`${card} flex items-center justify-between gap-3`}>
             <div className="min-w-0">
-              <div className="text-xs uppercase tracking-wide text-[#777]">Signed in as</div>
+              <div className="text-xs uppercase tracking-wide text-fl-tx2">Signed in as</div>
               <div className="truncate text-sm">{email || 'your account'}</div>
             </div>
-            <Link href="/settings" className="flex h-11 shrink-0 items-center rounded-xl bg-[#222] px-4 text-sm font-semibold">Settings</Link>
+            <Link href="/settings" className="flex h-11 shrink-0 items-center rounded-xl bg-fl-s2 px-4 text-sm font-semibold">Settings</Link>
           </section>
         </div>
       )}

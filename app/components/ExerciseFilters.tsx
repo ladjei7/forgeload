@@ -26,7 +26,7 @@ export function useFacets() {
 export function clearFacetCache() { cache = null; }
 
 const sel = (on: boolean) =>
-  `h-11 min-w-0 flex-1 rounded-xl border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-green-400/50 ${on ? 'border-green-400 bg-green-400/10 text-white' : 'border-[#333] bg-[#1a1a1a] text-[#ccc]'}`;
+  `h-11 min-w-0 flex-1 rounded-xl border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fl-acc/50 ${on ? 'border-fl-acc bg-fl-acc/10 text-fl-tx' : 'border-fl-line bg-fl-s2 text-fl-tx2'}`;
 
 // Two compact dropdowns (scrollable lists) instead of rows of chips.
 export default function ExerciseFilters({

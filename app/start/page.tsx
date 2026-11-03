@@ -53,10 +53,10 @@ function Card<T extends string | number>({ c, on, pick }: { c: Choice<T>; on: bo
   return (
     <button
       onClick={() => pick(c.id)} aria-pressed={on}
-      className={`flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left transition active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-green-400/60 outline-none ${on ? 'border-green-400 bg-green-400/10' : 'border-transparent bg-[#111] hover:bg-[#161616]'}`}
+      className={`flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left transition active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-fl-acc/60 outline-none ${on ? 'border-fl-acc bg-fl-acc/10' : 'border-transparent bg-fl-s1 border border-fl-line hover:bg-fl-s2'}`}
     >
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#1d1d1d] text-2xl font-bold">{c.icon}</span>
-      <span className="min-w-0"><span className="block text-lg font-semibold">{c.title}</span><span className="block text-sm text-[#888]">{c.sub}</span></span>
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-fl-s2 text-2xl font-bold">{c.icon}</span>
+      <span className="min-w-0"><span className="block text-lg font-semibold">{c.title}</span><span className="block text-sm text-fl-tx2">{c.sub}</span></span>
     </button>
   );
 }
@@ -97,17 +97,17 @@ export default function StartPage() {
 
   const bar = (
     <div className="mb-6 flex gap-2" aria-label={`Step ${Math.min(step + 1, STEPS.length)} of ${STEPS.length}`}>
-      {STEPS.map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i < step || done ? 'bg-green-400' : i === step ? 'bg-green-400/50' : 'bg-[#222]'}`} />)}
+      {STEPS.map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i < step || done ? 'bg-fl-acc' : i === step ? 'bg-fl-acc/50' : 'bg-fl-s2'}`} />)}
     </div>
   );
 
   if (!done) {
     const key = STEPS[step];
     return (
-      <main className="mx-auto max-w-xl px-4 pb-10 pt-6 text-white">
+      <main className="mx-auto max-w-xl px-4 pb-10 pt-6 text-fl-tx">
         {bar}
         <h1 className="mb-1 text-3xl font-bold leading-tight">{QUESTION[key][0]}</h1>
-        <p className="mb-6 text-[#888]">{QUESTION[key][1]}</p>
+        <p className="mb-6 text-fl-tx2">{QUESTION[key][1]}</p>
         <div className="space-y-3">
           {key === 'days' && DAYS.map(c => <Card key={c.id} c={c} on={days === c.id} pick={v => answer(() => setDays(v))} />)}
           {key === 'experience' && EXP.map(c => <Card key={c.id} c={c} on={exp === c.id} pick={v => answer(() => setExp(v))} />)}
@@ -116,8 +116,8 @@ export default function StartPage() {
           {key === 'comfort' && COMFORTS.map(c => <Card key={c.id} c={c} on={comfort === c.id} pick={v => answer(() => setComfort(v))} />)}
         </div>
         <div className="mt-6 flex items-center justify-between text-sm">
-          {step > 0 ? <button onClick={() => setStep(step - 1)} className="h-11 px-2 text-[#aaa]">← Back</button> : <span />}
-          <Link href="/plan" className="text-[#777] underline-offset-2 hover:underline">Build it myself instead</Link>
+          {step > 0 ? <button onClick={() => setStep(step - 1)} className="h-11 px-2 text-fl-tx2">← Back</button> : <span />}
+          <Link href="/plan" className="text-fl-tx2 underline-offset-2 hover:underline">Build it myself instead</Link>
         </div>
       </main>
     );
@@ -127,55 +127,55 @@ export default function StartPage() {
   const others = rec ? [rec.primary, ...rec.alternatives].filter(id => id !== chosenId) : [];
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-10 pt-6 text-white">
+    <main className="mx-auto max-w-xl px-4 pb-10 pt-6 text-fl-tx">
       {bar}
       <div className="mb-4 flex flex-wrap gap-2">
-        {chips.map((c, i) => <span key={i} className="rounded-full bg-[#1a1a1a] px-3 py-1 text-xs text-[#bbb]">{c}</span>)}
+        {chips.map((c, i) => <span key={i} className="rounded-full bg-fl-s2 px-3 py-1 text-xs text-fl-tx2">{c}</span>)}
       </div>
       {rec && tpl && (
         <>
-          <div className="text-xs uppercase tracking-wide text-green-400">{picked && picked !== rec.primary ? 'Your pick' : 'Built for you'}</div>
+          <div className="text-xs uppercase tracking-wide text-fl-acc">{picked && picked !== rec.primary ? 'Your pick' : 'Built for you'}</div>
           <h1 className="mb-1 mt-1 text-3xl font-bold leading-tight">{tpl.name}</h1>
-          <p className="mb-4 text-[#aaa]">{tpl.blurb}</p>
-          <div className="mb-4 space-y-2 rounded-2xl bg-[#111] p-4 text-sm leading-relaxed text-[#ccc]">
-            <p><span className="font-semibold text-white">Why this split. </span>{rec.why}</p>
-            <p><span className="font-semibold text-white">Your goal. </span>{GOAL_NOTE[goal as Goal]}</p>
-            <p><span className="font-semibold text-white">Your time. </span>{TIME_NOTE[mins as Minutes]}</p>
-            {adapted && adapted.notes.length > 0 && <p><span className="font-semibold text-white">Your comfort. </span>{adapted.notes.join(' ')}</p>}
+          <p className="mb-4 text-fl-tx2">{tpl.blurb}</p>
+          <div className="mb-4 space-y-2 rounded-2xl bg-fl-s1 border border-fl-line p-4 text-sm leading-relaxed text-fl-tx2">
+            <p><span className="font-semibold text-fl-tx">Why this split. </span>{rec.why}</p>
+            <p><span className="font-semibold text-fl-tx">Your goal. </span>{GOAL_NOTE[goal as Goal]}</p>
+            <p><span className="font-semibold text-fl-tx">Your time. </span>{TIME_NOTE[mins as Minutes]}</p>
+            {adapted && adapted.notes.length > 0 && <p><span className="font-semibold text-fl-tx">Your comfort. </span>{adapted.notes.join(' ')}</p>}
           </div>
           <div className="mb-4 space-y-3">
             {tpl.days.map((d, i) => (
-              <details key={i} className="rounded-2xl bg-[#111] px-4 py-3" open={i === 0}>
+              <details key={i} className="rounded-2xl bg-fl-s1 border border-fl-line px-4 py-3" open={i === 0}>
                 <summary className="flex cursor-pointer list-none items-center justify-between">
-                  <span className="font-semibold">{d.name}</span><span className="text-sm text-[#777]">{d.exercises.length} exercises</span>
+                  <span className="font-semibold">{d.name}</span><span className="text-sm text-fl-tx2">{d.exercises.length} exercises</span>
                 </summary>
                 <ul className="mt-2 space-y-1 text-sm">
-                  {d.exercises.map((e, j) => <li key={j} className="flex justify-between gap-3"><span>{e[0]}{adapted?.swapped[e[0]] && <span className="block text-xs text-[#777]">Instead of {adapted.swapped[e[0]]}</span>}</span><span className="shrink-0 text-[#777]">{e[1]} × {e[2]}-{e[3]}</span></li>)}
+                  {d.exercises.map((e, j) => <li key={j} className="flex justify-between gap-3"><span>{e[0]}{adapted?.swapped[e[0]] && <span className="block text-xs text-fl-tx2">Instead of {adapted.swapped[e[0]]}</span>}</span><span className="shrink-0 text-fl-tx2">{e[1]} × {e[2]}-{e[3]}</span></li>)}
                 </ul>
               </details>
             ))}
           </div>
-          {error && <p role="alert" className="mb-3 text-sm text-red-400">{error}</p>}
-          <button onClick={create} disabled={busy} className="h-14 w-full rounded-xl bg-green-400 text-lg font-bold text-black disabled:opacity-60">
+          {error && <p role="alert" className="mb-3 text-sm text-fl-bad">{error}</p>}
+          <button onClick={create} disabled={busy} className="h-14 w-full rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc disabled:opacity-60">
             {busy ? 'Creating...' : 'Create this plan'}
           </button>
-          <p className="mt-2 text-center text-xs text-[#666]">You can rename days and swap any exercise afterward.</p>
+          <p className="mt-2 text-center text-xs text-fl-tx2">You can rename days and swap any exercise afterward.</p>
           {others.length > 0 && (
             <div className="mt-6">
-              <div className="mb-2 text-xs uppercase tracking-wide text-[#777]">Other options</div>
+              <div className="mb-2 text-xs uppercase tracking-wide text-fl-tx2">Other options</div>
               <div className="space-y-2">
                 {others.map(id => {
                   const t = TEMPLATES.find(x => x.id === id)!;
                   return (
-                    <button key={id} onClick={() => setPicked(id)} className="w-full rounded-2xl bg-[#111] px-4 py-3 text-left">
-                      <span className="block font-semibold">{t.name}</span><span className="block text-sm text-[#888]">{t.blurb}</span>
+                    <button key={id} onClick={() => setPicked(id)} className="w-full rounded-2xl bg-fl-s1 border border-fl-line px-4 py-3 text-left">
+                      <span className="block font-semibold">{t.name}</span><span className="block text-sm text-fl-tx2">{t.blurb}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
           )}
-          <button onClick={() => { setStep(0); setPicked(''); }} className="mt-6 h-11 w-full text-sm text-[#aaa]">← Change my answers</button>
+          <button onClick={() => { setStep(0); setPicked(''); }} className="mt-6 h-11 w-full text-sm text-fl-tx2">← Change my answers</button>
         </>
       )}
     </main>

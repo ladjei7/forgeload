@@ -22,8 +22,8 @@ const FALLBACK_EQUIP = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machin
 const EMPTY: Form = { name: '', muscle: '', equipment: '', tracking: 'weight_reps', load: 'total', aliases: '', notes: '' };
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-const field = 'h-12 w-full min-w-0 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-3 text-base text-white outline-none focus:border-green-400 focus-visible:ring-2 focus-visible:ring-green-400/50';
-const card = 'rounded-2xl bg-[#111] p-4';
+const field = 'h-12 w-full min-w-0 rounded-xl border border-fl-field bg-fl-bg px-3 text-base text-fl-tx outline-none focus:border-fl-acc focus-visible:ring-2 focus-visible:ring-fl-acc/50';
+const card = 'rounded-2xl bg-fl-s1 border border-fl-line p-4';
 
 export default function LibraryPage() {
   const [tab, setTab] = useState<Tab>('all');
@@ -169,54 +169,54 @@ export default function LibraryPage() {
 
   const tabBtn = (t: Tab, label: string) => (
     <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
-      className={`h-10 shrink-0 rounded-full px-4 text-sm font-semibold ${tab === t ? 'bg-white text-black' : 'bg-[#1a1a1a] text-[#bbb]'}`}>{label}</button>
+      className={`h-10 shrink-0 rounded-full px-4 text-sm font-semibold ${tab === t ? 'bg-fl-acc text-fl-on-acc' : 'bg-fl-s2 text-fl-tx2'}`}>{label}</button>
   );
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-28 pt-4 text-white">
+    <main className="mx-auto max-w-xl px-4 pb-28 pt-4 text-fl-tx">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h1 className="text-3xl font-bold">Exercises</h1>
-        <button onClick={() => startNew()} className="h-11 rounded-xl bg-green-400 px-4 font-bold text-black">+ New</button>
+        <button onClick={() => startNew()} className="h-11 rounded-xl bg-fl-acc px-4 font-bold text-fl-on-acc">+ New</button>
       </div>
 
       {form && (
         <section className={`${card} mb-4`} aria-label={form.id ? 'Edit exercise' : 'New exercise'}>
           <h2 className="mb-3 text-lg font-bold">{form.id ? 'Edit exercise' : 'New exercise'}</h2>
           <div className="space-y-3">
-            <label className="block text-xs text-[#888]">Name
+            <label className="block text-xs text-fl-tx2">Name
               <input className={`${field} mt-1`} value={form.name} maxLength={80} onChange={e => setForm({ ...form, name: e.target.value })} />
             </label>
-            <label className="block text-xs text-[#888]">Primary muscle
+            <label className="block text-xs text-fl-tx2">Primary muscle
               <select className={`${field} mt-1`} value={form.muscle} onChange={e => setForm({ ...form, muscle: e.target.value })}>
                 <option value="">Choose...</option>{muscleOptions.map(m => <option key={m}>{m}</option>)}
               </select>
             </label>
-            <label className="block text-xs text-[#888]">Equipment
+            <label className="block text-xs text-fl-tx2">Equipment
               <select className={`${field} mt-1`} value={form.equipment} onChange={e => setForm({ ...form, equipment: e.target.value })}>
                 <option value="">Choose...</option>{equipOptions.map(m => <option key={m}>{m}</option>)}
               </select>
             </label>
-            <label className="block text-xs text-[#888]">How you log it
+            <label className="block text-xs text-fl-tx2">How you log it
               <select className={`${field} mt-1`} value={form.tracking} onChange={e => setForm({ ...form, tracking: e.target.value })}>
                 {Object.entries(TRACKING).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </label>
-            <label className="block text-xs text-[#888]">Weight means
+            <label className="block text-xs text-fl-tx2">Weight means
               <select className={`${field} mt-1`} value={form.load} onChange={e => setForm({ ...form, load: e.target.value })}>
                 {Object.entries(LOAD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </label>
-            <label className="block text-xs text-[#888]">Other names to search by (optional, comma separated)
+            <label className="block text-xs text-fl-tx2">Other names to search by (optional, comma separated)
               <input className={`${field} mt-1`} value={form.aliases} onChange={e => setForm({ ...form, aliases: e.target.value })} />
             </label>
-            <label className="block text-xs text-[#888]">Notes (optional)
+            <label className="block text-xs text-fl-tx2">Notes (optional)
               <textarea className={`${field} mt-1 h-24 py-2`} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
             </label>
           </div>
-          {formError && <p role="alert" className="mt-3 text-sm text-red-400">{formError}</p>}
+          {formError && <p role="alert" className="mt-3 text-sm text-fl-bad">{formError}</p>}
           <div className="mt-4 flex gap-3">
-            <button onClick={saveForm} disabled={saving} className="h-12 flex-1 rounded-xl bg-white font-bold text-black disabled:opacity-60">{saving ? 'Saving...' : 'Save'}</button>
-            <button onClick={() => setForm(null)} className="h-12 rounded-xl bg-[#222] px-5 text-[#ccc]">Cancel</button>
+            <button onClick={saveForm} disabled={saving} className="h-12 flex-1 rounded-xl bg-fl-acc font-bold text-fl-on-acc disabled:opacity-60">{saving ? 'Saving...' : 'Save'}</button>
+            <button onClick={() => setForm(null)} className="h-12 rounded-xl bg-fl-s2 px-5 text-fl-tx2">Cancel</button>
           </div>
         </section>
       )}
@@ -230,8 +230,8 @@ export default function LibraryPage() {
       </div>
       <ExerciseFilters muscle={muscle} equip={equip} onMuscle={setMuscle} onEquip={setEquip} />
 
-      {note && <p role="status" className="mb-3 text-sm text-green-400">{note}</p>}
-      {error && <p role="alert" className="mb-3 rounded-xl bg-[#2a1111] p-3 text-sm text-red-300">{error}</p>}
+      {note && <p role="status" className="mb-3 text-sm text-fl-ok">{note}</p>}
+      {error && <p role="alert" className="mb-3 rounded-xl bg-fl-s2 p-3 text-sm text-fl-bad">{error}</p>}
 
       <ul className="space-y-2">
         {items.map(ex => {
@@ -240,27 +240,27 @@ export default function LibraryPage() {
             <li key={ex.id} className={`${card} ${ex.archived_at ? 'opacity-50' : ''}`}>
               <div className="flex items-center gap-3">
                 <button className="min-w-0 flex-1 text-left" aria-expanded={open} onClick={() => setOpenId(open ? '' : ex.id)}>
-                  <div className="truncate text-base font-semibold">{ex.name}{ex.is_custom ? <span className="ml-2 text-xs font-normal text-[#888]">yours</span> : null}{ex.archived_at ? <span className="ml-2 text-xs font-normal text-[#888]">archived</span> : null}</div>
-                  <div className="truncate text-sm text-[#777]">{ex.muscle_group} · {ex.equipment}</div>
+                  <div className="truncate text-base font-semibold">{ex.name}{ex.is_custom ? <span className="ml-2 text-xs font-normal text-fl-tx2">yours</span> : null}{ex.archived_at ? <span className="ml-2 text-xs font-normal text-fl-tx2">archived</span> : null}</div>
+                  <div className="truncate text-sm text-fl-tx2">{ex.muscle_group} · {ex.equipment}</div>
                 </button>
                 <button onClick={() => toggleFav(ex)} aria-pressed={favs.has(ex.id)} aria-label={favs.has(ex.id) ? `Remove ${ex.name} from favorites` : `Add ${ex.name} to favorites`}
-                  className={`h-11 w-11 shrink-0 rounded-xl text-2xl ${favs.has(ex.id) ? 'text-yellow-300' : 'text-[#555]'}`}>{favs.has(ex.id) ? '★' : '☆'}</button>
+                  className={`h-11 w-11 shrink-0 rounded-xl text-2xl ${favs.has(ex.id) ? 'text-yellow-300' : 'text-fl-tx2'}`}>{favs.has(ex.id) ? '★' : '☆'}</button>
               </div>
               {open && (
-                <div className="mt-3 space-y-2 border-t border-[#222] pt-3 text-sm">
-                  <div className="text-[#aaa]">Logged as: {TRACKING[ex.tracking_type] ?? ex.tracking_type}</div>
-                  <div className="text-[#aaa]">Weight means: {LOAD[ex.load_convention] ?? ex.load_convention}</div>
-                  {ex.instructions ? <p className="whitespace-pre-wrap text-[#ccc]">{ex.instructions}</p> : <p className="text-[#666]">No technique notes yet.</p>}
+                <div className="mt-3 space-y-2 border-t border-fl-line pt-3 text-sm">
+                  <div className="text-fl-tx2">Logged as: {TRACKING[ex.tracking_type] ?? ex.tracking_type}</div>
+                  <div className="text-fl-tx2">Weight means: {LOAD[ex.load_convention] ?? ex.load_convention}</div>
+                  {ex.instructions ? <p className="whitespace-pre-wrap text-fl-tx2">{ex.instructions}</p> : <p className="text-fl-tx2">No technique notes yet.</p>}
                   {ex.is_custom && (
                     <div className="flex flex-wrap gap-3 pt-1">
                       {ex.archived_at
-                        ? <button onClick={() => setArchived(ex, false)} className="h-10 rounded-xl bg-[#222] px-4">Restore</button>
+                        ? <button onClick={() => setArchived(ex, false)} className="h-10 rounded-xl bg-fl-s2 px-4">Restore</button>
                         : <>
-                            <button onClick={() => startNew(ex)} className="h-10 rounded-xl bg-[#222] px-4">Edit</button>
-                            <button onClick={() => startNew(ex, true)} className="h-10 rounded-xl bg-[#222] px-4">Duplicate</button>
-                            <button onClick={() => setArchived(ex, true)} className="h-10 rounded-xl bg-[#222] px-4">Archive</button>
+                            <button onClick={() => startNew(ex)} className="h-10 rounded-xl bg-fl-s2 px-4">Edit</button>
+                            <button onClick={() => startNew(ex, true)} className="h-10 rounded-xl bg-fl-s2 px-4">Duplicate</button>
+                            <button onClick={() => setArchived(ex, true)} className="h-10 rounded-xl bg-fl-s2 px-4">Archive</button>
                           </>}
-                      <button onClick={() => deleteExercise(ex)} className="h-10 rounded-xl bg-[#2a1111] px-4 text-red-300">Delete</button>
+                      <button onClick={() => deleteExercise(ex)} className="h-10 rounded-xl bg-fl-s2 px-4 text-fl-bad">Delete</button>
                     </div>
                   )}
                 </div>
@@ -270,18 +270,18 @@ export default function LibraryPage() {
         })}
       </ul>
 
-      {loading && <p className="mt-4 text-center text-[#777]">Loading...</p>}
+      {loading && <p className="mt-4 text-center text-fl-tx2">Loading...</p>}
       {!loading && !error && items.length === 0 && (
         <div className={`${card} text-center`}>
-          <p className="mb-3 text-[#aaa]">
+          <p className="mb-3 text-fl-tx2">
             {tab === 'favorites' ? 'No favorites yet. Tap the star on any exercise.' : tab === 'recent' ? 'Nothing used yet. Exercises you add to a plan or log show up here.'
               : tab === 'mine' ? 'You have not created any exercises yet.' : 'No exercises match. Try fewer words or clear a filter.'}
           </p>
-          {(tab === 'all' || tab === 'mine') && <button onClick={() => startNew()} className="h-11 rounded-xl bg-white px-4 font-bold text-black">Create {q.trim() ? `"${q.trim()}"` : 'an exercise'}</button>}
+          {(tab === 'all' || tab === 'mine') && <button onClick={() => startNew()} className="h-11 rounded-xl bg-fl-acc px-4 font-bold text-fl-on-acc">Create {q.trim() ? `"${q.trim()}"` : 'an exercise'}</button>}
         </div>
       )}
-      {hasMore && !loading && <button onClick={() => load(true, items.length)} className="mt-4 h-12 w-full rounded-xl bg-[#1a1a1a] text-[#ccc]">Load more</button>}
-      <p className="mt-6 text-center text-xs text-[#666]">Exercise information is general and not medical advice. <Link href="/plan" className="underline">Back to Plan</Link></p>
+      {hasMore && !loading && <button onClick={() => load(true, items.length)} className="mt-4 h-12 w-full rounded-xl bg-fl-s2 text-fl-tx2">Load more</button>}
+      <p className="mt-6 text-center text-xs text-fl-tx2">Exercise information is general and not medical advice. <Link href="/plan" className="underline">Back to Plan</Link></p>
     </main>
   );
 }

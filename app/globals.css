@@ -1,26 +1,47 @@
 @import "tailwindcss";
 
+/* Forgeload design tokens. Hybrid direction: Precision Forge base, Chalk Ledger target emphasis, optional Daylight light theme.
+   Dark is the default. Light is chosen in Settings (stored in this browser). */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --fl-bg: #101419; --fl-s1: #1C232C; --fl-s2: #252D38; --fl-line: #3B4757; --fl-field: #6F7C8E;
+  --fl-tx: #F7F8FA; --fl-tx2: #A6B0BD; --fl-acc: #FF7043; --fl-on-acc: #101419;
+  --fl-ok: #39BBA5; --fl-on-ok: #101419; --fl-bad: #FF8A80; --fl-tint: #2a1f1b;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --fl-bg: #F6F5F1; --fl-s1: #FFFFFF; --fl-s2: #ECEAE3; --fl-line: #D5D3CB; --fl-field: #8A93A1;
+  --fl-tx: #12161C; --fl-tx2: #4A5361; --fl-acc: #BF360C; --fl-on-acc: #FFFFFF;
+  --fl-ok: #167A57; --fl-on-ok: #FFFFFF; --fl-bad: #B3261E; --fl-tint: #FBEDE7;
+  color-scheme: light;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-fl-bg: var(--fl-bg);
+  --color-fl-s1: var(--fl-s1);
+  --color-fl-s2: var(--fl-s2);
+  --color-fl-line: var(--fl-line);
+  --color-fl-field: var(--fl-field);
+  --color-fl-tx: var(--fl-tx);
+  --color-fl-tx2: var(--fl-tx2);
+  --color-fl-acc: var(--fl-acc);
+  --color-fl-on-acc: var(--fl-on-acc);
+  --color-fl-ok: var(--fl-ok);
+  --color-fl-on-ok: var(--fl-on-ok);
+  --color-fl-bad: var(--fl-bad);
+  --color-fl-tint: var(--fl-tint);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--fl-bg);
+  color: var(--fl-tx);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-tap-highlight-color: transparent;
 }
+button, a { touch-action: manipulation; }
+:focus-visible { outline: 3px solid var(--fl-acc); outline-offset: 2px; }
+input, select, textarea { color: var(--fl-tx); }
+input::placeholder { color: var(--fl-tx2); opacity: .7; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }

@@ -73,25 +73,25 @@ export default function HistoryPage() {
   }
 
   return (
-    <main style={{ minHeight: '100vh', background: '#000', color: '#fff', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
+    <main style={{ minHeight: '100vh', background: 'var(--fl-bg)', color: 'var(--fl-tx)', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>History</h1>
 
-      {loading && <p style={{ color: '#666' }}>Loading...</p>}
+      {loading && <p style={{ color: 'var(--fl-tx2)' }}>Loading...</p>}
 
       {!loading && sessions.length === 0 && (
-        <div style={{ background: '#111', borderRadius: '12px', padding: '1.5rem', textAlign: 'center' }}>
-          <p style={{ color: '#666' }}>No sessions yet. Log your first workout.</p>
+        <div style={{ background: 'var(--fl-s1)', borderRadius: '12px', padding: '1.5rem', textAlign: 'center' }}>
+          <p style={{ color: 'var(--fl-tx2)' }}>No sessions yet. Log your first workout.</p>
         </div>
       )}
 
       {sessions.map((session, sessionIndex) => (
-        <div key={session.id} style={{ background: '#111', borderRadius: '12px', padding: '1.5rem', marginBottom: '1rem' }}>
+        <div key={session.id} style={{ background: 'var(--fl-s1)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
                 {session.workout_days?.day_name ?? 'Workout'}
               </h2>
-              <p style={{ color: '#666', fontSize: '13px' }}>
+              <p style={{ color: 'var(--fl-tx2)', fontSize: '13px' }}>
                 {parseLocalDate(session.session_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
               </p>
             </div>
@@ -105,19 +105,19 @@ export default function HistoryPage() {
             const trend = getTrend(volume, prevVolume);
 
             return (
-              <div key={log.id} style={{ borderTop: '1px solid #222', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
+              <div key={log.id} style={{ borderTop: '1px solid var(--fl-line)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                   <h3 style={{ fontSize: '1rem', fontWeight: 'bold' }}>{log.exercise_name}</h3>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     {trend && (
                       <span style={{
                         fontSize: '18px',
-                        color: trend === '↑' ? '#4ade80' : trend === '↓' ? '#f87171' : '#888'
+                        color: trend === '↑' ? 'var(--fl-ok)' : trend === '↓' ? 'var(--fl-bad)' : 'var(--fl-tx2)'
                       }}>
                         {trend}
                       </span>
                     )}
-                    <span style={{ color: '#555', fontSize: '12px' }}>
+                    <span style={{ color: 'var(--fl-tx2)', fontSize: '12px' }}>
                       {volume > 0 ? `${volume.toLocaleString()} lbs total` : ''}
                     </span>
                   </div>
@@ -126,13 +126,13 @@ export default function HistoryPage() {
                 {log.exercise_sets
                   .sort((a, b) => a.set_number - b.set_number)
                   .map(set => (
-                    <p key={set.set_number} style={{ color: '#888', fontSize: '13px', marginBottom: '2px' }}>
+                    <p key={set.set_number} style={{ color: 'var(--fl-tx2)', fontSize: '13px', marginBottom: '2px' }}>
                       Set {set.set_number}: {set.weight} lbs × {set.reps} reps
                     </p>
                   ))}
 
                 {log.exercise_sets.length === 0 && (
-                  <p style={{ color: '#444', fontSize: '13px' }}>No sets logged</p>
+                  <p style={{ color: 'var(--fl-tx2)', fontSize: '13px' }}>No sets logged</p>
                 )}
               </div>
             );

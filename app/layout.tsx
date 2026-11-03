@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Forgeload", statusBarStyle: "black-translucent" },
 };
 
-export const viewport: Viewport = { themeColor: "#000000" };
+export const viewport: Viewport = { themeColor: "#101419" };
 
 export default function RootLayout({
   children,
@@ -17,8 +17,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body style={{ margin: 0, background: '#000', color: '#fff', fontFamily: 'sans-serif', paddingBottom: '80px' }}>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: "try{if(localStorage.getItem('fl-theme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}" }} />
+      </head>
+      <body style={{ margin: 0, paddingBottom: 'calc(92px + env(safe-area-inset-bottom))' }}>
         <AuthGate>{children}</AuthGate>
 
         <BottomNav />

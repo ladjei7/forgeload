@@ -441,78 +441,78 @@ export default function LogPage() {
 
   // ---------- render ----------
 
-  const card = 'rounded-2xl bg-[#111] p-4';
-  const inputCls = 'h-12 w-full min-w-0 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] text-center text-lg tabular-nums text-white outline-none placeholder:text-[#555] focus:border-green-400 focus-visible:ring-2 focus-visible:ring-green-400/50 disabled:opacity-60';
+  const card = 'rounded-2xl bg-fl-s1 border border-fl-line p-4';
+  const inputCls = 'h-12 w-full min-w-0 rounded-xl border border-fl-field bg-fl-bg text-center text-lg tabular-nums text-fl-tx outline-none placeholder:text-fl-tx2 focus:border-fl-acc focus-visible:ring-2 focus-visible:ring-fl-acc/50 disabled:opacity-60';
 
-  if (loading) return <main className="mx-auto max-w-xl px-4 pt-6 text-white"><p className="text-[#777]">Loading your workout...</p></main>;
+  if (loading) return <main className="mx-auto max-w-xl px-4 pt-6 text-fl-tx"><p className="text-fl-tx2">Loading your workout...</p></main>;
 
   if (summary) {
     return (
-      <main className="mx-auto max-w-xl px-4 pb-28 pt-6 text-white">
+      <main className="mx-auto max-w-xl px-4 pb-28 pt-6 text-fl-tx">
         <h1 className="mb-1 text-3xl font-bold">Workout done</h1>
-        <p className="mb-6 text-[#888]">{summary.dayName}</p>
+        <p className="mb-6 text-fl-tx2">{summary.dayName}</p>
         <div className="mb-4 grid grid-cols-2 gap-3">
           {[['Time', `${summary.minutes} min`], ['Exercises', String(summary.exercises)], ['Sets', String(summary.sets)], ['Volume', `${summary.volume.toLocaleString()} lb`]].map(([k, v]) => (
-            <div key={k} className={card}><div className="text-xs uppercase tracking-wide text-[#777]">{k}</div><div className="text-2xl font-bold tabular-nums">{v}</div></div>
+            <div key={k} className={card}><div className="text-xs uppercase tracking-wide text-fl-tx2">{k}</div><div className="text-2xl font-bold tabular-nums">{v}</div></div>
           ))}
         </div>
-        <p className="mb-4 text-xs text-[#666]">Volume is weight x reps added up. It helps you compare like with like, but it is not a direct measure of strength or muscle gain.</p>
+        <p className="mb-4 text-xs text-fl-tx2">Volume is weight x reps added up. It helps you compare like with like, but it is not a direct measure of strength or muscle gain.</p>
         {summary.prs.length > 0 && (
           <div className={`${card} mb-4`}>
-            <div className="mb-2 font-bold text-green-400">Heaviest weight yet</div>
-            {summary.prs.map(p => <div key={p.name} className="text-sm">{p.name}: {p.weight} lb <span className="text-[#777]">(was {p.before})</span></div>)}
+            <div className="mb-2 font-bold text-fl-ok">Heaviest weight yet</div>
+            {summary.prs.map(p => <div key={p.name} className="text-sm">{p.name}: {p.weight} lb <span className="text-fl-tx2">(was {p.before})</span></div>)}
           </div>
         )}
-        <button onClick={() => setSummary(null)} className="h-12 w-full rounded-xl bg-white text-base font-bold text-black">Done</button>
+        <button onClick={() => setSummary(null)} className="h-12 w-full rounded-xl bg-fl-acc text-base font-bold text-fl-on-acc">Done</button>
       </main>
     );
   }
 
   if (plans.length === 0 || days.length === 0) {
     return (
-      <main className="mx-auto max-w-xl px-4 pt-6 text-white">
+      <main className="mx-auto max-w-xl px-4 pt-6 text-fl-tx">
         <h1 className="mb-4 text-3xl font-bold">Log</h1>
         <div className={card}>
-          <p className="mb-4 text-[#bbb]">{plans.length === 0 ? 'You do not have a plan yet.' : 'This plan has no workouts yet.'} Pick a template or build your own, then come back to log.</p>
-          <Link href="/plan" className="flex h-12 items-center justify-center rounded-xl bg-white font-bold text-black">Go to Plan</Link>
+          <p className="mb-4 text-fl-tx2">{plans.length === 0 ? 'You do not have a plan yet.' : 'This plan has no workouts yet.'} Pick a template or build your own, then come back to log.</p>
+          <Link href="/plan" className="flex h-12 items-center justify-center rounded-xl bg-fl-acc font-bold text-fl-on-acc">Go to Plan</Link>
         </div>
-        {error && <p role="alert" className="mt-4 text-sm text-red-400">{error}</p>}
+        {error && <p role="alert" className="mt-4 text-sm text-fl-bad">{error}</p>}
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-44 pt-4 text-white">
+    <main className="mx-auto max-w-xl px-4 pb-44 pt-4 text-fl-tx">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-xs uppercase tracking-wide text-[#777]">{session ? 'Workout in progress' : dayId === suggestedDayId ? 'Up next' : 'Selected workout'}</div>
+          <div className="text-xs uppercase tracking-wide text-fl-tx2">{session ? 'Workout in progress' : dayId === suggestedDayId ? 'Up next' : 'Selected workout'}</div>
           <h1 className="truncate text-3xl font-bold">{dayName}</h1>
-          <div className="text-sm text-[#777]">{plans.find(p => p.id === planId)?.name} · workout {days.findIndex(d => d.id === dayId) + 1} of {days.length}</div>
+          <div className="text-sm text-fl-tx2">{plans.find(p => p.id === planId)?.name} · workout {days.findIndex(d => d.id === dayId) + 1} of {days.length}</div>
         </div>
-        {session && <button onClick={finishWorkout} className="h-11 shrink-0 rounded-xl bg-green-400 px-4 font-bold text-black">Finish</button>}
+        {session && <button onClick={finishWorkout} className="h-11 shrink-0 rounded-xl bg-fl-acc px-4 font-bold text-fl-on-acc">Finish</button>}
       </div>
 
-      {error && <div role="alert" className="mb-4 rounded-xl bg-[#2a1111] p-3 text-sm text-red-300">{error}</div>}
+      {error && <div role="alert" className="mb-4 rounded-xl bg-fl-s2 p-3 text-sm text-fl-bad">{error}</div>}
 
       {!session && (
         <div className="mb-4">
-          <button onClick={startWorkout} disabled={starting || exercises.length === 0} className="h-14 w-full rounded-2xl bg-white text-lg font-bold text-black disabled:opacity-50">
+          <button onClick={startWorkout} disabled={starting || exercises.length === 0} className="h-14 w-full rounded-2xl bg-fl-acc text-lg font-bold text-fl-on-acc disabled:opacity-50">
             {starting ? 'Starting...' : exercises.length === 0 ? 'No exercises in this workout' : 'Start workout'}
           </button>
           {exercises.length === 0 && (
-            <p className="mt-3 text-center text-sm text-[#aaa]">This workout has no exercises yet. <Link href="/plan" className="text-green-400 underline">Add exercises in Plan</Link>, or choose a different workout.</p>
+            <p className="mt-3 text-center text-sm text-fl-tx2">This workout has no exercises yet. <Link href="/plan" className="text-fl-acc underline">Add exercises in Plan</Link>, or choose a different workout.</p>
           )}
-          <button onClick={() => setShowPicker(v => !v)} className="mt-3 w-full text-sm text-[#888] underline-offset-2 hover:underline">Choose a different workout</button>
+          <button onClick={() => setShowPicker(v => !v)} className="mt-3 w-full text-sm text-fl-tx2 underline-offset-2 hover:underline">Choose a different workout</button>
           {showPicker && (
             <div className={`${card} mt-3 space-y-3`}>
               {plans.length > 1 && (
-                <label className="block text-xs text-[#888]">Plan
+                <label className="block text-xs text-fl-tx2">Plan
                   <select value={planId} onChange={e => changePlan(e.target.value)} className={`${inputCls} mt-1 text-base`}>
                     {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </label>
               )}
-              <label className="block text-xs text-[#888]">Workout
+              <label className="block text-xs text-fl-tx2">Workout
                 <select value={dayId} onChange={e => changeDay(e.target.value)} className={`${inputCls} mt-1 text-base`}>
                   {days.map(d => <option key={d.id} value={d.id}>{d.day_name}{d.id === suggestedDayId ? ' (up next)' : ''}{emptyDays.includes(d.id) ? ' (no exercises yet)' : ''}</option>)}
                 </select>
@@ -533,66 +533,66 @@ export default function LogPage() {
         return (
           <section key={ex.id} className={`${card} mb-3`}>
             <h2 className="text-lg font-bold">{ex.exercise_name}</h2>
-            <div className="text-sm text-[#777]">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} reps{loadNote ? ` · ${loadNote}` : ''}</div>
-            {readSwaps(session?.id)[ex.id] && <div className="text-xs text-[#777]">Swapped for today from {readSwaps(session?.id)[ex.id].fromName}</div>}
+            <div className="text-sm text-fl-tx2">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} reps{loadNote ? ` · ${loadNote}` : ''}</div>
+            {readSwaps(session?.id)[ex.id] && <div className="text-xs text-fl-tx2">Swapped for today from {readSwaps(session?.id)[ex.id].fromName}</div>}
             {session && !rs.some(r => r.done) && (swapFor === ex.id ? (
-              <div className="mt-2 rounded-xl bg-[#1a1a1a] p-3">
-                <div className="mb-2 text-sm text-[#aaa]">Swap {ex.exercise_name} for:</div>
+              <div className="mt-2 rounded-xl bg-fl-s2 p-3">
+                <div className="mb-2 text-sm text-fl-tx2">Swap {ex.exercise_name} for:</div>
                 <ExercisePicker value={swapName} onChange={setSwapName} onPick={x => setSwapId(x?.id ?? '')} />
-                <label className="mb-3 flex items-center gap-2 text-sm text-[#ccc]"><input type="checkbox" checked={swapPlan} onChange={e => setSwapPlan(e.target.checked)} className="h-5 w-5" />Also change it in my plan</label>
+                <label className="mb-3 flex items-center gap-2 text-sm text-fl-tx2"><input type="checkbox" checked={swapPlan} onChange={e => setSwapPlan(e.target.checked)} className="h-5 w-5" />Also change it in my plan</label>
                 <div className="flex gap-2">
-                  <button onClick={() => doSwap(ex)} className="h-11 flex-1 rounded-xl bg-green-400 font-bold text-black">Swap</button>
-                  <button onClick={() => { setSwapFor(''); setSwapName(''); setSwapId(''); setSwapPlan(false); }} className="h-11 rounded-xl bg-[#222] px-4">Cancel</button>
+                  <button onClick={() => doSwap(ex)} className="h-11 flex-1 rounded-xl bg-fl-acc font-bold text-fl-on-acc">Swap</button>
+                  <button onClick={() => { setSwapFor(''); setSwapName(''); setSwapId(''); setSwapPlan(false); }} className="h-11 rounded-xl bg-fl-s2 px-4">Cancel</button>
                 </div>
-                <p className="mt-2 text-xs text-[#777]">Only today changes unless you tick the box. Your past sets stay in your history either way.</p>
+                <p className="mt-2 text-xs text-fl-tx2">Only today changes unless you tick the box. Your past sets stay in your history either way.</p>
               </div>
-            ) : <button onClick={() => { setSwapFor(ex.id); setSwapName(''); setSwapId(''); }} className="mt-1 h-9 text-sm text-[#888] underline-offset-2 hover:underline">Swap exercise</button>)}
-            <details className="mb-3 mt-2 rounded-xl bg-[#1a1a1a] px-3 py-2">
+            ) : <button onClick={() => { setSwapFor(ex.id); setSwapName(''); setSwapId(''); }} className="mt-1 h-9 text-sm text-fl-tx2 underline-offset-2 hover:underline">Swap exercise</button>)}
+            <details className="mb-3 mt-2 rounded-xl bg-fl-s2 px-3 py-2">
               <summary className="cursor-pointer list-none text-sm">
-                <span className="text-[#888]">Target </span>
-                <span className="font-semibold text-green-400">
+                <span className="text-fl-tx2">Target </span>
+                <span className="font-semibold text-fl-acc">
                   {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : `Find a ${ex.rep_min}-${ex.rep_max} rep weight`) : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} lb` : 'add load'} × ${t.reps}`)}
                 </span>
-                <span className="ml-2 text-xs text-[#666] underline">why?</span>
+                <span className="ml-2 text-xs text-fl-tx2 underline">why?</span>
               </summary>
-              <p className="mt-2 text-xs leading-relaxed text-[#aaa]">{t.reason}</p>
+              <p className="mt-2 text-xs leading-relaxed text-fl-tx2">{t.reason}</p>
             </details>
 
-            <div className="mb-1 grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] gap-2 text-center text-[11px] uppercase tracking-wide text-[#666]">
+            <div className="mb-1 grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] gap-2 text-center text-[11px] uppercase tracking-wide text-fl-tx2">
               <span>Set</span><span>Previous</span><span>{bw || added ? '+Lb' : 'Lb'}</span><span>Reps</span><span className="sr-only">Done</span>
             </div>
             {rs.map((r, i) => {
               const pv = p?.sets[i] ?? p?.sets.at(-1);
               return (
                 <div key={i} className="mb-2 grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] items-center gap-2">
-                  <span className="text-center text-sm text-[#777]">{i + 1}</span>
-                  <span className="truncate text-center text-xs tabular-nums text-[#777]">{pv ? `${pv.weight}×${pv.reps}` : '-'}</span>
+                  <span className="text-center text-sm text-fl-tx2">{i + 1}</span>
+                  <span className="truncate text-center text-xs tabular-nums text-fl-tx2">{pv ? `${pv.weight}×${pv.reps}` : '-'}</span>
                   <input
                     aria-label={`${ex.exercise_name} set ${i + 1} weight in pounds`}
                     inputMode="decimal" disabled={!session} value={r.weight}
                     placeholder={bw && !t.weight && !pv?.weight ? 'BW' : t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
                     onChange={e => setRow(ex.id, i, { weight: clean(e.target.value) })}
-                    className={`${inputCls} ${r.done ? 'border-green-400/40 bg-green-400/10' : ''}`}
+                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : ''}`}
                   />
                   <input
                     aria-label={`${ex.exercise_name} set ${i + 1} reps`}
                     inputMode="numeric" disabled={!session} value={r.reps}
                     placeholder={t.reps !== null ? String(t.reps) : ''}
                     onChange={e => setRow(ex.id, i, { reps: e.target.value.replace(/\D/g, '') })}
-                    className={`${inputCls} ${r.done ? 'border-green-400/40 bg-green-400/10' : ''}`}
+                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : ''}`}
                   />
                   <button
                     aria-label={r.done ? `Undo set ${i + 1}` : `Log set ${i + 1}`} aria-pressed={r.done}
                     disabled={!session} onClick={() => toggleSet(ex, i)}
-                    className={`h-12 w-12 rounded-xl text-xl font-bold disabled:opacity-40 ${r.done ? 'bg-green-400 text-black' : 'bg-[#242424] text-[#888]'}`}
+                    className={`h-12 w-12 rounded-xl text-xl font-bold disabled:opacity-40 ${r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'}`}
                   >✓</button>
                 </div>
               );
             })}
             {session && (
               <div className="mt-1 flex gap-4 text-sm">
-                <button onClick={() => addSet(ex)} className="text-[#aaa] underline-offset-2 hover:underline">+ Add set</button>
-                {rs.length > 1 && !rs[rs.length - 1].done && <button onClick={() => removeLastSet(ex)} className="text-[#666] underline-offset-2 hover:underline">Remove last set</button>}
+                <button onClick={() => addSet(ex)} className="text-fl-tx2 underline-offset-2 hover:underline">+ Add set</button>
+                {rs.length > 1 && !rs[rs.length - 1].done && <button onClick={() => removeLastSet(ex)} className="text-fl-tx2 underline-offset-2 hover:underline">Remove last set</button>}
               </div>
             )}
           </section>
@@ -600,18 +600,18 @@ export default function LogPage() {
       })}
 
       {session && (
-        <button onClick={() => { if (confirm('Discard this workout and everything logged in it?')) discardWorkout(); }} className="mt-2 w-full py-3 text-sm text-red-400/80">Discard workout</button>
+        <button onClick={() => { if (confirm('Discard this workout and everything logged in it?')) discardWorkout(); }} className="mt-2 w-full py-3 text-sm text-fl-bad">Discard workout</button>
       )}
 
       {rest && (
-        <div role="timer" aria-live="off" className="fixed inset-x-0 bottom-[78px] z-50 mx-auto flex max-w-xl items-center gap-3 rounded-2xl border border-[#2a2a2a] bg-[#1c1c1c] p-3 shadow-lg" style={{ width: 'calc(100% - 1.5rem)' }}>
+        <div role="timer" aria-live="off" className="fixed inset-x-0 bottom-[78px] z-50 mx-auto flex max-w-xl items-center gap-3 rounded-2xl border border-fl-line bg-fl-s2 p-3 shadow-lg" style={{ width: 'calc(100% - 1.5rem)' }}>
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] uppercase tracking-wide text-[#777]">{restLeft === 0 ? 'Rest over' : 'Rest'}</div>
-            <div className={`text-3xl font-bold tabular-nums ${restLeft === 0 ? 'text-green-400' : ''}`}>{mmss(restLeft)}</div>
+            <div className="text-[11px] uppercase tracking-wide text-fl-tx2">{restLeft === 0 ? 'Rest over' : 'Rest'}</div>
+            <div className={`text-3xl font-bold tabular-nums ${restLeft === 0 ? 'text-fl-ok' : ''}`}>{mmss(restLeft)}</div>
           </div>
-          <button onClick={() => adjustRest(-15)} className="h-11 rounded-xl bg-[#2a2a2a] px-3 text-sm">-15s</button>
-          <button onClick={() => adjustRest(15)} className="h-11 rounded-xl bg-[#2a2a2a] px-3 text-sm">+15s</button>
-          <button onClick={stopRest} className="h-11 rounded-xl bg-white px-4 text-sm font-bold text-black">{restLeft === 0 ? 'Close' : 'Skip'}</button>
+          <button onClick={() => adjustRest(-15)} className="h-11 rounded-xl bg-fl-s2 px-3 text-sm">-15s</button>
+          <button onClick={() => adjustRest(15)} className="h-11 rounded-xl bg-fl-s2 px-3 text-sm">+15s</button>
+          <button onClick={stopRest} className="h-11 rounded-xl bg-fl-acc px-4 text-sm font-bold text-fl-on-acc">{restLeft === 0 ? 'Close' : 'Skip'}</button>
         </div>
       )}
     </main>
