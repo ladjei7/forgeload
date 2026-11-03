@@ -17,7 +17,7 @@ export default function BottomNav() {
   if (pathname === '/login' || pathname === '/start' || pathname?.startsWith('/design-preview')) return null;
   const on = (h: string) => (h === '/' ? pathname === '/' : pathname?.startsWith(h));
   return (
-    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-[100] mx-3 mb-[calc(10px+env(safe-area-inset-bottom))] flex h-16 items-center justify-around rounded-[20px] border border-fl-line bg-fl-s1 p-1.5">
+    <nav aria-label="Main" className="fixed inset-x-3 bottom-0 z-[100] mx-auto mb-[calc(10px+env(safe-area-inset-bottom))] max-w-xl flex h-16 items-center justify-around rounded-[20px] border border-fl-line bg-fl-s1 p-1.5">
       {TABS.map(t => (
         <Link key={t.href} href={t.href} aria-current={on(t.href) ? 'page' : undefined}
           className={`flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[14px] text-[11px] no-underline ${on(t.href) ? 'font-bold text-fl-tx' : 'text-fl-tx2'}`}>
