@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import Link from 'next/link';
 import ExercisePicker from '../components/ExercisePicker';
+import { logEvent } from '../lib/events';
 import { TEMPLATES } from '../lib/templates';
 import { createPlanFromTemplate } from '../lib/applyTemplate';
 
 
 type Plan = { id: string; name: string };
 type Day = { id: string; day_name: string; sort_order: number };
-type PlanEx = { id: string; exercise_name: string; target_sets: number; rep_min: number; rep_max: number };
+type PlanEx = { id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number };
 
 const card = { background: '#111', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem' } as const;
 const input = { width: '100%', boxSizing: 'border-box', minWidth: 0, padding: '0.75rem', borderRadius: '8px', border: '1px solid #333', background: '#1a1a1a', color: '#fff', fontSize: '16px' } as const;
@@ -36,6 +37,10 @@ export default function PlanPage() {
   const [editSets, setEditSets] = useState('');
   const [editMin, setEditMin] = useState('');
   const [editMax, setEditMax] = useState('');
+  const [repFor, setRepFor] = useState(''); // plan exercise being replaced
+  const [repName, setRepName] = useState('');
+  const [repId, setRepId] = useState('');
+  const [undo, setUndo] = useState<{ rowId: string; name: string; id: string | null; label: string } | null>(null);
 
   useEffect(() => { loadPlans(); }, []);
   useEffect(() => { if (planId) loadDays(planId); else { setDays([]); setDayId(''); } }, [planId]);
@@ -54,7 +59,7 @@ export default function PlanPage() {
     if (data) { setDays(data); if (!data.find(d => d.id === dayId)) setDayId(data[0]?.id ?? ''); }
   }
   async function loadExercises(id: string) {
-    const { data } = await supabase.from('plan_exercises').select('id, exercise_name, target_sets, rep_min, rep_max').eq('workout_day_id', id).order('sort_order');
+    const { data } = await supabase.from('plan_exercises').select('id, exercise_name, exercise_id, target_sets, rep_min, rep_max').eq('workout_day_id', id).order('sort_order');
     if (data) setExercises(data);
   }
 
@@ -124,6 +129,22 @@ export default function PlanPage() {
     const { error } = await supabase.from('plan_exercises').update({ target_sets: s, rep_min: mn, rep_max: mx }).eq('id', editId);
     if (error) return setMessage('Error: ' + error.message);
     setEditId(''); await loadExercises(dayId);
+  }
+  // Replace keeps the row's sets and reps. Past workouts keep the exercise they were logged with, so history is never rewritten.
+  async function replaceExercise(ex: PlanEx) {
+    if (!repId) return setMessage('Pick an exercise from the list to replace it with.');
+    if (repId === ex.exercise_id) return setMessage('That is the same exercise.');
+    const { error } = await supabase.from('plan_exercises').update({ exercise_name: repName.trim(), exercise_id: repId }).eq('id', ex.id);
+    if (error) return setMessage('Error: ' + error.message);
+    logEvent('swap', { from: { id: ex.exercise_id, name: ex.exercise_name }, to: { id: repId, name: repName.trim() }, scope: 'plan' });
+    setUndo({ rowId: ex.id, name: ex.exercise_name, id: ex.exercise_id, label: `Replaced ${ex.exercise_name} with ${repName.trim()}. Your past sets stay in your history.` });
+    setRepFor(''); setRepName(''); setRepId(''); setEditId(''); setMessage(''); await loadExercises(dayId);
+  }
+  async function undoReplace() {
+    if (!undo) return;
+    const { error } = await supabase.from('plan_exercises').update({ exercise_name: undo.name, exercise_id: undo.id }).eq('id', undo.rowId);
+    if (error) return setMessage('Error: ' + error.message);
+    setUndo(null); await loadExercises(dayId);
   }
   async function moveExercise(index: number, dir: -1 | 1) {
     const j = index + dir;
@@ -223,6 +244,18 @@ export default function PlanPage() {
                     ))}
                   </div>
                   <button onClick={saveEdit} style={btn}>Save</button>
+                  {repFor === ex.id ? (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div style={{ color: '#aaa', fontSize: '13px', marginBottom: '6px' }}>Replace {ex.exercise_name} with:</div>
+                      <ExercisePicker value={repName} onChange={setRepName} onPick={x => setRepId(x?.id ?? '')} />
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={() => replaceExercise(ex)} style={{ ...btn, background: '#4ade80' }}>Replace</button>
+                        <button onClick={() => { setRepFor(''); setRepName(''); setRepId(''); }} style={{ ...btn, background: '#222', color: '#fff' }}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setRepFor(ex.id); setRepName(''); setRepId(''); }} style={{ ...btn, background: '#222', color: '#fff', marginTop: '0.5rem' }}>Replace this exercise</button>
+                  )}
                 </div>
               )}
             </div>
@@ -244,6 +277,7 @@ export default function PlanPage() {
         </div>
       )}
 
+      {undo && <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '1rem', color: '#4ade80', fontSize: '14px', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}><span>{undo.label}</span><button onClick={undoReplace} style={{ background: 'none', border: '1px solid #4ade80', color: '#4ade80', borderRadius: '8px', padding: '0.4rem 0.8rem', cursor: 'pointer', flexShrink: 0 }}>Undo</button></div>}
       {message && <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '1rem', color: '#4ade80', fontSize: '14px' }}>{message}</div>}
     </main>
   );

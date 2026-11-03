@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from './lib/supabase';
 import { nextDayId } from './lib/rotation';
+import SwapSuggestionCard from './components/SwapSuggestionCard';
 
 type Recent = { id: string; dayName: string; completedAt: string; sets: number };
 type Home = {
@@ -132,6 +133,8 @@ export default function HomePage() {
               <p className="mt-3 text-center text-xs text-[#666]">You can pick a different workout on the next screen.</p>
             </section>
           ) : null}
+
+          {!data.active && data.planCount > 0 && <SwapSuggestionCard />}
 
           <section className="grid grid-cols-2 gap-3">
             <div className={card}>

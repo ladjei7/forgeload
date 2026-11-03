@@ -1,4 +1,6 @@
 'use client';
+import { logEvent } from '../lib/events';
+import ExercisePicker from '../components/ExercisePicker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
@@ -24,9 +26,13 @@ type HistRow = {
   exercise_sets: { set_number: number; reps: number; weight: number }[] | null;
 };
 
-const LS = { plan: 'fl-plan', rest: 'fl-rest', draft: (id: string) => `fl-draft-${id}` };
+const LS = { plan: 'fl-plan', rest: 'fl-rest', draft: (id: string) => `fl-draft-${id}`, swaps: (id: string) => `fl-swaps-${id}` };
+// A swap-for-today is remembered per session so a reload mid-workout keeps it. The plan itself is not touched unless the user asks.
+type Swap = { name: string; id: string | null; fromName: string; fromId: string | null };
+function readSwaps(sessionId: string | undefined): Record<string, Swap> { if (!sessionId) return {}; try { return JSON.parse(lsGet(LS.swaps(sessionId)) ?? '{}'); } catch { return {}; } }
 
 function lsGet(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
+function readDrafts(sessionId: string): Record<string, unknown> { try { return JSON.parse(lsGet(LS.draft(sessionId)) ?? '{}'); } catch { return {}; } }
 function lsSet(key: string, v: string | null) { try { if (v === null) localStorage.removeItem(key); else localStorage.setItem(key, v); } catch { /* storage unavailable: app still works */ } }
 
 const one = <T,>(x: T | T[] | null): T | null => (Array.isArray(x) ? x[0] ?? null : x);
@@ -52,6 +58,10 @@ export default function LogPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [rest, setRest] = useState<{ end: number; total: number } | null>(null);
+  const [swapFor, setSwapFor] = useState(''); // plan exercise being swapped
+  const [swapName, setSwapName] = useState('');
+  const [swapId, setSwapId] = useState('');
+  const [swapPlan, setSwapPlan] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const logIds = useRef<Record<string, Promise<string>>>({});
@@ -65,7 +75,8 @@ export default function LogPage() {
     const { data: exData } = await supabase
       .from('plan_exercises').select('id, exercise_name, exercise_id, target_sets, rep_min, rep_max')
       .eq('workout_day_id', day).order('sort_order');
-    const list = (exData ?? []) as PlanEx[];
+    const sw = readSwaps(activeSession?.id);
+    const list = ((exData ?? []) as PlanEx[]).map(e => (sw[e.id] ? { ...e, exercise_name: sw[e.id].name, exercise_id: sw[e.id].id } : e));
     setExercises(list);
 
     // How each exercise is logged (bodyweight, per-hand weights). Missing info = normal weight x reps.
@@ -297,6 +308,24 @@ export default function LogPage() {
     return p;
   }
 
+  async function doSwap(ex: PlanEx) {
+    if (!session) return;
+    if (!swapId) return setError('Pick an exercise from the list to swap to.');
+    if (swapId === ex.exercise_id) return setError('That is the same exercise.');
+    setError('');
+    const to = { id: swapId, name: swapName.trim() };
+    const sw = readSwaps(session.id); const orig = sw[ex.id] ?? { fromName: ex.exercise_name, fromId: ex.exercise_id };
+    if (swapPlan) {
+      const { error: err } = await supabase.from('plan_exercises').update({ exercise_name: to.name, exercise_id: to.id }).eq('id', ex.id);
+      if (err) return setError('Could not change your plan. Check your connection and try again.');
+      delete sw[ex.id];
+    } else sw[ex.id] = { name: to.name, id: to.id, fromName: orig.fromName, fromId: orig.fromId };
+    lsSet(LS.swaps(session.id), JSON.stringify(sw));
+    const d = readDrafts(session.id); delete d[ex.id]; lsSet(LS.draft(session.id), JSON.stringify(d)); // typed numbers belonged to the old exercise
+    logEvent('swap', { from: { id: ex.exercise_id, name: ex.exercise_name }, to, scope: swapPlan ? 'plan' : 'today' });
+    setSwapFor(''); setSwapName(''); setSwapId(''); setSwapPlan(false);
+    await loadDayContext(session.workout_day_id, session);
+  }
   function setRow(exId: string, i: number, patch: Partial<SetRow>) {
     setRows(r => ({ ...r, [exId]: r[exId].map((row, idx) => (idx === i ? { ...row, ...patch } : row)) }));
   }
@@ -505,6 +534,19 @@ export default function LogPage() {
           <section key={ex.id} className={`${card} mb-3`}>
             <h2 className="text-lg font-bold">{ex.exercise_name}</h2>
             <div className="text-sm text-[#777]">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} reps{loadNote ? ` · ${loadNote}` : ''}</div>
+            {readSwaps(session?.id)[ex.id] && <div className="text-xs text-[#777]">Swapped for today from {readSwaps(session?.id)[ex.id].fromName}</div>}
+            {session && !rs.some(r => r.done) && (swapFor === ex.id ? (
+              <div className="mt-2 rounded-xl bg-[#1a1a1a] p-3">
+                <div className="mb-2 text-sm text-[#aaa]">Swap {ex.exercise_name} for:</div>
+                <ExercisePicker value={swapName} onChange={setSwapName} onPick={x => setSwapId(x?.id ?? '')} />
+                <label className="mb-3 flex items-center gap-2 text-sm text-[#ccc]"><input type="checkbox" checked={swapPlan} onChange={e => setSwapPlan(e.target.checked)} className="h-5 w-5" />Also change it in my plan</label>
+                <div className="flex gap-2">
+                  <button onClick={() => doSwap(ex)} className="h-11 flex-1 rounded-xl bg-green-400 font-bold text-black">Swap</button>
+                  <button onClick={() => { setSwapFor(''); setSwapName(''); setSwapId(''); setSwapPlan(false); }} className="h-11 rounded-xl bg-[#222] px-4">Cancel</button>
+                </div>
+                <p className="mt-2 text-xs text-[#777]">Only today changes unless you tick the box. Your past sets stay in your history either way.</p>
+              </div>
+            ) : <button onClick={() => { setSwapFor(ex.id); setSwapName(''); setSwapId(''); }} className="mt-1 h-9 text-sm text-[#888] underline-offset-2 hover:underline">Swap exercise</button>)}
             <details className="mb-3 mt-2 rounded-xl bg-[#1a1a1a] px-3 py-2">
               <summary className="cursor-pointer list-none text-sm">
                 <span className="text-[#888]">Target </span>
