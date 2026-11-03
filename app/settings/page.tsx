@@ -4,6 +4,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 import { buildExport, setsCsv, download } from '../lib/exportData';
+import type { Comfort } from '../lib/comfort';
+
+const COMFORTS: { id: Comfort; title: string; sub: string }[] = [
+  { id: 'machines', title: 'Mostly machines', sub: 'Guided movements while getting comfortable.' },
+  { id: 'mixed', title: 'Machines and dumbbells', sub: 'A combination of both.' },
+  { id: 'all', title: 'All gym equipment', sub: 'Barbells, dumbbells, and machines.' },
+  { id: 'unsure', title: 'Not sure', sub: 'Choose for me.' },
+];
 
 const card = 'rounded-2xl bg-[#111] p-5';
 const btn = 'h-12 w-full rounded-xl bg-[#222] px-4 font-semibold disabled:opacity-60';
@@ -16,6 +24,23 @@ export default function SettingsPage() {
   const [err, setErr] = useState('');
   const [confirmText, setConfirmText] = useState('');
   const [showDelete, setShowDelete] = useState(false);
+
+  const [comfort, setComfort] = useState<Comfort | ''>('');
+  const [prefMsg, setPrefMsg] = useState('');
+
+  useEffect(() => {
+    supabase.from('user_training_prefs').select('comfort').maybeSingle().then(({ data }) => { if (data?.comfort) setComfort(data.comfort as Comfort); });
+  }, []);
+
+  async function saveComfort(c: Comfort) {
+    const prev = comfort; setComfort(c); setPrefMsg('');
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return;
+    const { error } = await supabase.from('user_training_prefs').upsert({ user_id: u.user.id, comfort: c, updated_at: new Date().toISOString() });
+    if (error) { setComfort(prev); return setErr('Could not save your preference: ' + error.message); }
+    try { localStorage.setItem('fl-comfort', c); } catch { /* optional */ }
+    setPrefMsg('Saved. Your current plan and history are unchanged.');
+  }
 
   useEffect(() => { supabase.auth.getSession().then(({ data }) => setEmail(data.session?.user.email ?? '')); }, []);
 
@@ -48,6 +73,20 @@ export default function SettingsPage() {
         <div className="text-xs uppercase tracking-wide text-[#777]">Signed in as</div>
         <div className="mb-3 truncate">{email || 'your account'}</div>
         <button className={btn} onClick={async () => { await supabase.auth.signOut(); router.replace('/login'); }}>Sign out</button>
+      </section>
+
+      <section className={card}>
+        <h2 className="mb-1 text-lg font-bold">Exercise comfort</h2>
+        <p className="mb-3 text-sm text-[#aaa]">Used when you start a new plan and to word suggestions. It never changes your current plan or past workouts, and it never adds barbells unless you choose all equipment.</p>
+        <div role="radiogroup" aria-label="Exercise comfort" className="space-y-2">
+          {COMFORTS.map(c => (
+            <button key={c.id} role="radio" aria-checked={comfort === c.id} onClick={() => saveComfort(c.id)}
+              className={`w-full rounded-xl px-4 py-3 text-left ${comfort === c.id ? 'bg-[#222] ring-2 ring-white/60' : 'bg-[#1a1a1a]'}`}>
+              <div className="font-semibold">{c.title}</div><div className="text-sm text-[#999]">{c.sub}</div>
+            </button>
+          ))}
+        </div>
+        {prefMsg && <p role="status" className="mt-3 text-sm text-green-400">{prefMsg}</p>}
       </section>
 
       <section className={card}>

@@ -22,20 +22,24 @@ const strip = (r: Row): Row => { const { user_id: _u, ...rest } = r; void _u; re
 export type Export = {
   exported_at: string; app: string; note: string;
   plans: Row[]; sessions: Row[]; custom_exercises: Row[]; favorites_and_recents: Row[];
+  training_preferences: Row[]; activity_log: Row[];
 };
 
 export async function buildExport(): Promise<Export> {
-  const [plans, sessions, custom, prefs] = await Promise.all([
+  const [plans, sessions, custom, prefs, tprefs, events] = await Promise.all([
     all('workout_plans', '*, workout_days(*, plan_exercises(*))'),
     all('workout_sessions', '*, workout_days(day_name), exercise_logs(*, exercise_sets(*))'),
     all('exercises', '*').then(r => r.filter(x => x.user_id)),
     all('user_exercise_prefs', '*').catch(() => [] as Row[]),
+    all('user_training_prefs', '*').catch(() => [] as Row[]),
+    all('user_events', '*').catch(() => [] as Row[]),
   ]);
   const clean = (v: unknown): unknown => Array.isArray(v) ? v.map(clean) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(strip(v as Row)).map(([k, x]) => [k, clean(x)])) : v;
   return {
     exported_at: new Date().toISOString(), app: 'Forgeload',
     note: 'Your own plans, workouts and custom exercises. Weights are in pounds. The built-in exercise library is not included.',
     plans: clean(plans) as Row[], sessions: clean(sessions) as Row[], custom_exercises: clean(custom) as Row[], favorites_and_recents: clean(prefs) as Row[],
+    training_preferences: clean(tprefs) as Row[], activity_log: clean(events) as Row[],
   };
 }
 

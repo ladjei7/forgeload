@@ -36,7 +36,10 @@ Client UI is cosmetic. The real checks are on the server.
 | Feature | Tier | Status |
 |---|---|---|
 | Comfort question, generator, reasons | Free | Prototype |
-| Save repeated swap, not-for-me, comfort offers, preference swaps | Free | Prototype |
+| Save repeated swap suggestion (Home, undoable) | Free | Real app |
+| Swap exercise today or in plan, with history preserved | Free | Real app |
+| Comfort preference, changeable in Settings, included in export | Free | Real app |
+| Not-for-me, comfort-up offers, preference swaps | Free | Prototype |
 | Targets, history, export | Free | Existing app |
 | Plateau identification (rule: no better top set in 3 sessions) | Pro | Prototype (one rule) |
 | Workout length vs session time fit | Pro | Prototype (one rule) |
