@@ -30,7 +30,7 @@ export default function LoginPage() {
   return (
     <main style={{ minHeight: '100vh', background: '#000', color: '#fff', padding: '2rem', maxWidth: '400px', margin: '0 auto' }}>
       <h1 style={{ margin: '0 0 1.25rem' }}>
-        <Image src="/logo.png" alt="Forgeload" width={640} height={616} priority style={{ width: '70%', maxWidth: 260, height: 'auto', display: 'block', margin: '0 auto' }} />
+        <Image src="/logo.png" alt="Forgeload" width={640} height={456} priority style={{ width: '70%', maxWidth: 260, height: 'auto', display: 'block', margin: '0 auto' }} />
       </h1>
       <p style={{ color: '#666', marginBottom: '2rem' }}>{mode === 'signin' ? 'Sign in to your account' : 'Create your account'}</p>
       <input style={input} type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
