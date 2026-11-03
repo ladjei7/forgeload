@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import BottomNav from "./BottomNav";
 import AuthGate from "./AuthGate";
@@ -6,7 +6,10 @@ import AuthGate from "./AuthGate";
 export const metadata: Metadata = {
   title: "Forgeload",
   description: "Plan. Log. Overload. Built for serious lifters.",
+  appleWebApp: { capable: true, title: "Forgeload", statusBarStyle: "black-translucent" },
 };
+
+export const viewport: Viewport = { themeColor: "#000000" };
 
 export default function RootLayout({
   children,
