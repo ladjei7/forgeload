@@ -80,6 +80,7 @@ export default function SettingsPage() {
         )}
       </section>
       {err && <p role="alert" className="rounded-xl bg-[#2a1111] p-3 text-sm text-red-300">{err}</p>}
+      <p className="text-center text-xs text-[#888]">Exercise data by <a href="https://repdb.co" rel="nofollow noopener" target="_blank" className="underline">RepDB (repdb.co)</a></p>
       <p className="text-center text-xs text-[#666]"><Link href="/" className="underline">Back to Home</Link></p>
     </main>
   );

@@ -4,10 +4,11 @@
 -- All of this is FREE-tier data and belongs to the user. It must never depend on a subscription.
 begin;
 
--- Curated metadata the generator trusts. Imported exercises stay searchable but are not generator-eligible until reviewed.
+-- Comfort level for the generator. Reuses 002's plan_eligible and review_status: imported exercises stay searchable but are not generator-eligible until a human reviews them.
 alter table exercises
-  add column if not exists comfort_level smallint check (comfort_level between 1 and 3), -- 1 machine/cable, 2 dumbbell/bodyweight, 3 barbell
-  add column if not exists metadata_reviewed boolean not null default false;
+  add column if not exists comfort_level smallint check (comfort_level between 1 and 3); -- 1 machine/cable, 2 dumbbell/bodyweight, 3 barbell/advanced bodyweight
+-- One row per source exercise, so the import can be run twice safely.
+create unique index if not exists exercises_source_uidx on exercises (source, source_id) where source is not null;
 
 create table if not exists user_training_prefs (
   user_id uuid primary key references auth.users(id) on delete cascade,
