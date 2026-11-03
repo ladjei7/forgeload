@@ -1,16 +1,20 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { supabase } from './lib/supabase';
 import { nextDayId } from './lib/rotation';
 import SwapSuggestionCard from './components/SwapSuggestionCard';
+import { summarize, weekDots, todayIndex, type ExSummary, type HistEntry, type PlanExLite } from './lib/homeSummary';
 
 type Recent = { id: string; dayName: string; completedAt: string; sets: number };
 type Home = {
   planCount: number;
   planName: string;
   active: { dayName: string } | null;
-  next: { dayName: string; exercises: string[] } | null;
+  next: { dayName: string; exercises: ExSummary[] } | null;
+  plannedPerWeek: number;
+  dots: boolean[];
   emptyPlan: boolean;
   weekCount: number;
   total: number;
@@ -34,7 +38,7 @@ export default function HomePage() {
       try {
         const { data: plans } = await supabase.from('workout_plans').select('id, name').order('created_at');
         const planList = (plans ?? []) as { id: string; name: string }[];
-        const h: Home = { planCount: planList.length, planName: '', active: null, next: null, emptyPlan: false, weekCount: 0, total: 0, recent: [] };
+        const h: Home = { planCount: planList.length, planName: '', active: null, next: null, emptyPlan: false, weekCount: 0, total: 0, recent: [], plannedPerWeek: 0, dots: Array(7).fill(false) };
 
         // An unfinished workout always comes first.
         const { data: act } = await supabase
@@ -55,21 +59,37 @@ export default function HomePage() {
             const [{ data: last }, { data: exs }] = await Promise.all([
               supabase.from('workout_sessions').select('workout_day_id, exercise_logs!inner(exercise_sets!inner(id))').in('workout_day_id', ids)
                 .not('completed_at', 'is', null).order('completed_at', { ascending: false }).limit(1),
-              supabase.from('plan_exercises').select('workout_day_id, exercise_name, sort_order').in('workout_day_id', ids).order('sort_order'),
+              supabase.from('plan_exercises').select('workout_day_id, exercise_name, exercise_id, target_sets, rep_min, rep_max, sort_order').in('workout_day_id', ids).order('sort_order'),
             ]);
-            const byDay = new Map<string, string[]>();
-            for (const r of (exs ?? []) as { workout_day_id: string; exercise_name: string }[]) {
-              byDay.set(r.workout_day_id, [...(byDay.get(r.workout_day_id) ?? []), r.exercise_name]);
+            const byDay = new Map<string, PlanExLite[]>();
+            for (const r of (exs ?? []) as { workout_day_id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number }[]) {
+              byDay.set(r.workout_day_id, [...(byDay.get(r.workout_day_id) ?? []), { name: r.exercise_name, exerciseId: r.exercise_id, sets: r.target_sets, repMin: r.rep_min, repMax: r.rep_max }]);
             }
+            h.plannedPerWeek = dayList.length;
             const lastId = (last?.[0] as { workout_day_id: string } | undefined)?.workout_day_id ?? null;
             const nextId = nextDayId(dayList, lastId, id => byDay.has(id));
             const next = dayList.find(d => d.id === nextId);
-            if (next && byDay.has(next.id)) h.next = { dayName: next.day_name, exercises: byDay.get(next.id) ?? [] };
+            if (next && byDay.has(next.id)) {
+              const planEx = byDay.get(next.id) ?? [];
+              // Last performance for these exercises, from COMPLETED sessions only (same source the workout screen uses).
+              const quoted = planEx.map(e => `"${e.name.replace(/"/g, '\\"')}"`).join(',');
+              const exIds = planEx.map(e => e.exerciseId).filter(Boolean).join(',');
+              const { data: hist } = await supabase.from('exercise_logs')
+                .select('exercise_name, exercise_id, workout_sessions!inner(completed_at), exercise_sets(set_number, reps, weight)')
+                .or(exIds ? `exercise_name.in.(${quoted}),exercise_id.in.(${exIds})` : `exercise_name.in.(${quoted})`)
+                .not('workout_sessions.completed_at', 'is', null).limit(500);
+              const entries: HistEntry[] = ((hist ?? []) as unknown as { exercise_name: string; exercise_id: string | null; workout_sessions: { completed_at: string } | { completed_at: string }[] | null; exercise_sets: HistEntry['sets'] | null }[])
+                .map(r => ({ name: r.exercise_name, exerciseId: r.exercise_id, at: one(r.workout_sessions)?.completed_at ?? '', sets: r.exercise_sets ?? [] }));
+              h.next = { dayName: next.day_name, exercises: summarize(planEx, entries) };
+            }
             else h.emptyPlan = true;
           } else h.emptyPlan = true;
         }
 
         const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+        const { data: wk } = await supabase.from('workout_sessions').select('completed_at, exercise_logs!inner(exercise_sets!inner(id))')
+          .not('completed_at', 'is', null).gte('completed_at', new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString());
+        h.dots = weekDots(((wk ?? []) as { completed_at: string }[]).map(r => r.completed_at), new Date());
         const [{ count: total }, { count: week }, { data: rec }] = await Promise.all([
           supabase.from('workout_sessions').select('id, exercise_logs!inner(exercise_sets!inner(id))', { count: 'exact', head: true }).not('completed_at', 'is', null),
           supabase.from('workout_sessions').select('id, exercise_logs!inner(exercise_sets!inner(id))', { count: 'exact', head: true }).not('completed_at', 'is', null).gte('completed_at', weekAgo),
@@ -95,8 +115,13 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-xl px-4 pb-8 pt-6 text-fl-tx">
-      <h1 className="mb-1 text-3xl font-bold tracking-tight">Forgeload</h1>
-      <p className="mb-5 text-sm text-fl-tx2">Plan. Log. Overload.</p>
+      <div className="mb-5 flex items-center gap-3">
+        <Image src="/brand/forgeload-symbol-1024.png" alt="" width={44} height={32} className="h-8 w-auto" priority />
+        <div>
+          <h1 className="text-2xl font-bold leading-none tracking-tight">Forgeload</h1>
+          <p className="mt-1 text-xs text-fl-tx2">Plan. Log. Overload.</p>
+        </div>
+      </div>
 
       {error && <p role="alert" className="mb-4 rounded-xl bg-fl-s2 p-3 text-sm text-fl-bad">{error}</p>}
       {!data && !error && <p className="text-fl-tx2">Loading...</p>}
@@ -123,12 +148,38 @@ export default function HomePage() {
               <Link href="/plan" className={primary}>Add exercises</Link>
             </section>
           ) : data.next ? (
-            <section className={card}>
-              <div className="text-xs uppercase tracking-wide text-fl-tx2">Up next · {data.planName}</div>
-              <h2 className="mb-2 mt-1 text-2xl font-bold">{data.next.dayName}</h2>
-              <p className="mb-4 text-sm text-fl-tx2">
-                {data.next.exercises.slice(0, 4).join(', ')}{data.next.exercises.length > 4 ? ` + ${data.next.exercises.length - 4} more` : ''}
-              </p>
+            <section className={card} aria-label="Next workout">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs uppercase tracking-wide text-fl-tx2">Up next · {data.planName}</div>
+                {data.total === 0 && <span className="rounded-full bg-fl-s2 px-2.5 py-1 text-xs text-fl-tx2">First workout</span>}
+              </div>
+              <h2 className="mb-3 mt-1 text-2xl font-bold">{data.next.dayName}</h2>
+              <ul className="mb-4 divide-y divide-fl-line">
+                {data.next.exercises.slice(0, 6).map(e => (
+                  <li key={e.name} className="flex items-baseline justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{e.name}</div>
+                      <div className="text-xs text-fl-tx2">{e.sets} sets · {e.repMin}-{e.repMax} reps</div>
+                    </div>
+                    <div className="shrink-0 text-right text-sm tabular-nums">
+                      {e.last ? (
+                        <>
+                          <div className="text-fl-tx2">Last {e.last[0].weight}×{e.last[0].reps}</div>
+                          <div className="font-semibold">Target {e.target.weight !== null ? `${e.target.weight}` : 'add load'}×{e.target.reps}</div>
+                        </>
+                      ) : (
+                        <div className="text-fl-tx2">Find your weight</div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {data.next.exercises.length > 6 && <p className="-mt-2 mb-4 text-xs text-fl-tx2">+ {data.next.exercises.length - 6} more</p>}
+              {data.total === 0 && (
+                <p className="mb-4 rounded-xl bg-fl-s2 p-3 text-sm leading-relaxed text-fl-tx2">
+                  First time through: pick a weight you can lift for the rep range with a rep or two left in the tank. Forgeload remembers it, then shows what you did last time and a target next time.
+                </p>
+              )}
               <Link href="/log" className={primary}>Start workout</Link>
               <p className="mt-3 text-center text-xs text-fl-tx2">You can pick a different workout on the next screen.</p>
             </section>
@@ -136,25 +187,30 @@ export default function HomePage() {
 
           {!data.active && data.planCount > 0 && <SwapSuggestionCard />}
 
-          <section className="grid grid-cols-2 gap-3">
-            <div className={card}>
-              <div className="text-3xl font-bold tabular-nums">{data.weekCount}</div>
-              <div className="text-sm text-fl-tx2">workouts, last 7 days</div>
-            </div>
-            <div className={card}>
-              <div className="text-3xl font-bold tabular-nums">{data.total}</div>
-              <div className="text-sm text-fl-tx2">workouts total</div>
-            </div>
-          </section>
+          {data.total > 0 && (
+            <section className={card} aria-label="This week">
+              <div className="mb-3 flex items-baseline justify-between">
+                <h2 className="text-lg font-bold">This week</h2>
+                <span className="text-sm text-fl-tx2">{data.dots.filter(Boolean).length}{data.plannedPerWeek ? ` of ${data.plannedPerWeek}` : ''} workouts</span>
+              </div>
+              <div className="flex justify-between">
+                {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => (
+                  <div key={i} className="flex flex-col items-center gap-1.5" aria-label={`${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][i]}: ${data.dots[i] ? 'workout done' : i === todayIndex(new Date()) ? 'today' : 'no workout'}`}>
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${data.dots[i] ? 'bg-fl-ok text-fl-on-ok' : i === todayIndex(new Date()) ? 'border-2 border-fl-field text-fl-tx' : 'border border-fl-line text-fl-tx2'}`}>{data.dots[i] ? '✓' : ''}</span>
+                    <span className="text-xs text-fl-tx2">{l}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-fl-tx2">{data.total} workouts logged in total.</p>
+            </section>
+          )}
 
-          <section className={card}>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold">Recent workouts</h2>
-              {data.recent.length > 0 && <Link href="/history" className="text-sm text-fl-acc">See all</Link>}
-            </div>
-            {data.recent.length === 0 ? (
-              <p className="text-sm text-fl-tx2">Nothing logged yet. Your finished workouts will show up here.</p>
-            ) : (
+          {data.recent.length > 0 && (
+            <section className={card}>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-bold">Recent workouts</h2>
+                <Link href="/history" className="text-sm text-fl-tx2 underline underline-offset-2">See all</Link>
+              </div>
               <ul className="space-y-2">
                 {data.recent.map(r => (
                   <li key={r.id} className="flex items-center justify-between border-b border-fl-line pb-2 last:border-0 last:pb-0">
@@ -163,8 +219,8 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-            )}
-          </section>
+            </section>
+          )}
 
           <Link href="/library" className="block text-center text-sm text-fl-tx2 underline-offset-2 hover:underline">Browse the exercise library</Link>
 

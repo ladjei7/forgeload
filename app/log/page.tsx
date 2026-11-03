@@ -441,8 +441,12 @@ export default function LogPage() {
 
   // ---------- render ----------
 
+  const allRows = Object.values(rows).flat();
+  const totalSets = allRows.length, doneSets = allRows.filter(r => r.done).length;
+  const currentEx = session ? exercises.find(e => (rows[e.id] ?? []).some(r => !r.done))?.id : undefined;
+
   const card = 'rounded-2xl bg-fl-s1 border border-fl-line p-4';
-  const inputCls = 'h-12 w-full min-w-0 rounded-xl border border-fl-field bg-fl-bg text-center text-lg tabular-nums text-fl-tx outline-none placeholder:text-fl-tx2 focus:border-fl-acc focus-visible:ring-2 focus-visible:ring-fl-acc/50 disabled:opacity-60';
+  const inputCls = 'h-14 w-full min-w-0 rounded-xl border border-fl-field bg-fl-bg text-center text-2xl font-semibold tabular-nums text-fl-tx outline-none placeholder:text-fl-tx2 focus:border-fl-acc focus-visible:ring-2 focus-visible:ring-fl-acc/50 disabled:opacity-60';
 
   if (loading) return <main className="mx-auto max-w-xl px-4 pt-6 text-fl-tx"><p className="text-fl-tx2">Loading your workout...</p></main>;
 
@@ -492,6 +496,13 @@ export default function LogPage() {
         {session && <button onClick={finishWorkout} className="h-11 shrink-0 rounded-xl bg-fl-acc px-4 font-bold text-fl-on-acc">Finish</button>}
       </div>
 
+      {session && totalSets > 0 && (
+        <div className="mb-4" role="progressbar" aria-label="Sets logged" aria-valuemin={0} aria-valuemax={totalSets} aria-valuenow={doneSets}>
+          <div className="mb-1 flex justify-between text-xs text-fl-tx2"><span>{doneSets} of {totalSets} sets logged</span></div>
+          <div className="flex gap-[3px]">{Array.from({ length: totalSets }, (_, i) => <i key={i} className={`h-1 flex-1 rounded-sm ${i < doneSets ? 'bg-fl-ok' : 'bg-fl-s2'}`} />)}</div>
+        </div>
+      )}
+
       {error && <div role="alert" className="mb-4 rounded-xl bg-fl-s2 p-3 text-sm text-fl-bad">{error}</div>}
 
       {!session && (
@@ -531,8 +542,11 @@ export default function LogPage() {
         const added = m?.tracking === 'added_weight_reps';
         const loadNote = m?.load === 'per_hand' ? 'Weight is per hand' : m?.load === 'per_side' ? 'Weight is per side' : '';
         return (
-          <section key={ex.id} className={`${card} mb-3`}>
-            <h2 className="text-lg font-bold">{ex.exercise_name}</h2>
+          <section key={ex.id} className={`${card} mb-3 ${currentEx === ex.id ? '!border-fl-field' : ''}`}>
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-lg font-bold">{ex.exercise_name}</h2>
+              {session && rs.length > 0 && <span className="shrink-0 text-xs text-fl-tx2">{rs.filter(r => r.done).length}/{rs.length}</span>}
+            </div>
             <div className="text-sm text-fl-tx2">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} reps{loadNote ? ` · ${loadNote}` : ''}</div>
             {readSwaps(session?.id)[ex.id] && <div className="text-xs text-fl-tx2">Swapped for today from {readSwaps(session?.id)[ex.id].fromName}</div>}
             {session && !rs.some(r => r.done) && (swapFor === ex.id ? (
@@ -547,26 +561,32 @@ export default function LogPage() {
                 <p className="mt-2 text-xs text-fl-tx2">Only today changes unless you tick the box. Your past sets stay in your history either way.</p>
               </div>
             ) : <button onClick={() => { setSwapFor(ex.id); setSwapName(''); setSwapId(''); }} className="mt-1 h-9 text-sm text-fl-tx2 underline-offset-2 hover:underline">Swap exercise</button>)}
-            <details className="mb-3 mt-2 rounded-xl bg-fl-s2 px-3 py-2">
-              <summary className="cursor-pointer list-none text-sm">
-                <span className="text-fl-tx2">Target </span>
-                <span className="font-semibold text-fl-acc">
+            <details className="mb-3 mt-3 border-l-4 border-fl-acc pl-3">
+              <summary className="cursor-pointer list-none py-1">
+                <div className="text-[11px] uppercase tracking-wide text-fl-tx2">Target</div>
+                <div className="text-2xl font-semibold leading-tight tracking-tight">
                   {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : `Find a ${ex.rep_min}-${ex.rep_max} rep weight`) : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} lb` : 'add load'} × ${t.reps}`)}
-                </span>
-                <span className="ml-2 text-xs text-fl-tx2 underline">why?</span>
+                </div>
+                <span className="text-xs text-fl-tx2 underline">why this target?</span>
               </summary>
               <p className="mt-2 text-xs leading-relaxed text-fl-tx2">{t.reason}</p>
             </details>
 
-            <div className="mb-1 grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] gap-2 text-center text-[11px] uppercase tracking-wide text-fl-tx2">
+            <div className="mb-1 grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3.25rem] gap-2 text-center text-[11px] uppercase tracking-wide text-fl-tx2">
               <span>Set</span><span>Previous</span><span>{bw || added ? '+Lb' : 'Lb'}</span><span>Reps</span><span className="sr-only">Done</span>
             </div>
             {rs.map((r, i) => {
               const pv = p?.sets[i] ?? p?.sets.at(-1);
               return (
-                <div key={i} className="mb-2 grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] items-center gap-2">
-                  <span className="text-center text-sm text-fl-tx2">{i + 1}</span>
-                  <span className="truncate text-center text-xs tabular-nums text-fl-tx2">{pv ? `${pv.weight}×${pv.reps}` : '-'}</span>
+                <div key={i} className="mb-2 grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3.25rem] items-center gap-2">
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-[10px] text-sm font-bold ${r.done ? 'bg-fl-ok text-fl-on-ok' : currentEx === ex.id && i === rs.findIndex(x => !x.done) ? 'border-2 border-fl-acc text-fl-acc' : 'border border-fl-field text-fl-tx2'}`}>{i + 1}</span>
+                  {pv && session && !r.done ? (
+                    <button type="button" onClick={() => setRow(ex.id, i, { weight: String(pv.weight), reps: String(pv.reps) })}
+                      aria-label={`Use last time: ${pv.weight} pounds for ${pv.reps} reps, for set ${i + 1}`}
+                      className="h-12 truncate rounded-lg text-center text-sm tabular-nums text-fl-tx2 underline decoration-dotted underline-offset-4">{pv.weight}×{pv.reps}</button>
+                  ) : (
+                    <span className="truncate text-center text-sm tabular-nums text-fl-tx2">{pv ? `${pv.weight}×${pv.reps}` : '-'}</span>
+                  )}
                   <input
                     aria-label={`${ex.exercise_name} set ${i + 1} weight in pounds`}
                     inputMode="decimal" disabled={!session} value={r.weight}
@@ -584,7 +604,7 @@ export default function LogPage() {
                   <button
                     aria-label={r.done ? `Undo set ${i + 1}` : `Log set ${i + 1}`} aria-pressed={r.done}
                     disabled={!session} onClick={() => toggleSet(ex, i)}
-                    className={`h-12 w-12 rounded-xl text-xl font-bold disabled:opacity-40 ${r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'}`}
+                    className={`h-14 w-[3.25rem] rounded-xl text-xl font-bold disabled:opacity-40 ${r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'}`}
                   >✓</button>
                 </div>
               );
