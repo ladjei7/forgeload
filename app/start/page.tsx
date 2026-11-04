@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { TEMPLATES } from '../lib/templates';
@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase';
 type Choice<T> = { id: T; icon: string; title: string; sub: string };
 
 const DAYS: Choice<number>[] = [
+  { id: 1, icon: '1', title: '1 day', sub: 'Better than none. The plan rotates week to week.' },
   { id: 2, icon: '2', title: '2 days', sub: 'Short on time? Still enough to make progress.' },
   { id: 3, icon: '3', title: '3 days', sub: 'A classic. Rest days built in.' },
   { id: 4, icon: '4', title: '4 days', sub: 'The sweet spot for most people.' },
@@ -18,34 +19,37 @@ const DAYS: Choice<number>[] = [
   { id: 6, icon: '6', title: '6 days', sub: 'All in. Recovery matters here.' },
 ];
 const EXP: Choice<Experience>[] = [
-  { id: 'new', icon: '🌱', title: 'Just starting out', sub: 'Under 6 months of steady training' },
-  { id: 'some', icon: '🔥', title: 'Getting stronger', sub: '6 months to 2 years' },
-  { id: 'experienced', icon: '🏋️', title: 'Seasoned lifter', sub: 'More than 2 years' },
+  { id: 'brand_new', icon: '🌱', title: 'Brand new', sub: 'I have never really lifted' },
+  { id: 'new', icon: '🌿', title: 'Beginner', sub: 'Under about 6 months of steady training' },
+  { id: 'some', icon: '🔥', title: 'Intermediate', sub: 'About 6 months to 2 years' },
+  { id: 'experienced', icon: '🏋️', title: 'Advanced', sub: 'More than 2 years, I know my way around' },
 ];
 const GOALS: Choice<Goal>[] = [
   { id: 'muscle', icon: '💪', title: 'Build muscle', sub: 'Size and shape' },
   { id: 'strength', icon: '⚡', title: 'Get stronger', sub: 'Heavier weight on the big lifts' },
-  { id: 'both', icon: '🎯', title: 'A bit of both', sub: 'Strength on the main lift, size everywhere else' },
+  { id: 'fat_loss', icon: '🔥', title: 'Lose body fat', sub: 'While keeping or building muscle' },
+  { id: 'fitness', icon: '❤️', title: 'Improve general fitness', sub: 'Feel stronger and fitter overall' },
 ];
 const TIMES: Choice<Minutes>[] = [
-  { id: 45, icon: '⏱️', title: 'About 45 minutes', sub: 'Quick and focused' },
-  { id: 60, icon: '🕐', title: 'About an hour', sub: 'The usual' },
-  { id: 90, icon: '🕰️', title: '75 minutes or more', sub: 'No rush' },
+  { id: 25, icon: '⏱️', title: '20 to 30 minutes', sub: 'Quick and focused' },
+  { id: 40, icon: '🕐', title: '30 to 45 minutes', sub: 'A solid session' },
+  { id: 55, icon: '🕑', title: '45 to 60 minutes', sub: 'The usual' },
+  { id: 75, icon: '🕰️', title: 'More than 60 minutes', sub: 'No rush' },
 ];
 
 const COMFORTS: Choice<Comfort>[] = [
   { id: 'machines', icon: '🛠️', title: 'Mostly machines', sub: 'I prefer guided movements while getting comfortable.' },
-  { id: 'mixed', icon: '🔀', title: 'Machines and dumbbells', sub: 'I like a combination of both.' },
-  { id: 'all', icon: '🏋️', title: 'All gym equipment', sub: 'I am comfortable with barbells, dumbbells, and machines.' },
-  { id: 'unsure', icon: '🤷', title: 'I am not sure', sub: 'Choose for me.' },
+  { id: 'mixed', icon: '🔀', title: 'Machines and dumbbells', sub: "I'm comfortable combining machines and dumbbells." },
+  { id: 'all', icon: '🏋️', title: 'All gym equipment', sub: "I'm comfortable using barbells, dumbbells, cables, and machines." },
+  { id: 'unsure', icon: '🤷', title: "I'm not sure, choose for me", sub: 'Recommend an approachable starting point.' },
 ];
 
 const STEPS = ['days', 'experience', 'goal', 'time', 'comfort'] as const;
 const QUESTION = {
   days: ['How many days a week can you train?', 'Be realistic. A plan you can keep beats a perfect one.'],
-  experience: ['How long have you been lifting?', 'This helps us avoid starting you too hard.'],
-  goal: ['What is your main goal?', 'This sets how heavy your main lifts are.'],
-  time: ['How long is a typical workout?', 'We will fit the plan to your time.'],
+  experience: ['How experienced are you with strength training?', 'This helps us avoid starting you too hard. Not sure? Pick the lower one.'],
+  goal: ["What's your main fitness goal?", 'This sets your rep ranges. You can change it later.'],
+  time: ['How much time can you spend per workout?', 'We will fit the plan to your time.'],
   comfort: ['What exercises would you feel most comfortable starting with?', 'This only picks your starting exercises. You can change it any time, and you can swap any exercise later.'],
 } as const;
 
@@ -63,12 +67,16 @@ function Card<T extends string | number>({ c, on, pick }: { c: Choice<T>; on: bo
 
 export default function StartPage() {
   const router = useRouter();
-  const [step, setStep] = useState(0);
-  const [days, setDays] = useState(0);
-  const [exp, setExp] = useState<Experience | ''>('');
-  const [goal, setGoal] = useState<Goal | ''>('');
-  const [mins, setMins] = useState<Minutes | 0>(0);
-  const [comfort, setComfort] = useState<Comfort | ''>('');
+  // Answers survive a refresh or a trip away from the page (this browser only), so nobody has to start over.
+  const saved = useState(() => { try { return JSON.parse(localStorage.getItem('fl-start') ?? '{}') as Record<string, unknown>; } catch { return {}; } })[0];
+  const valid = <T,>(v: unknown, opts: Choice<T>[]): T | undefined => opts.find(o => o.id === v)?.id;
+  const [step, setStep] = useState(() => Math.min(Number(saved.step) || 0, STEPS.length - 1));
+  const [days, setDays] = useState(() => valid(saved.days, DAYS) ?? 0);
+  const [exp, setExp] = useState<Experience | ''>(() => valid(saved.exp, EXP) ?? '');
+  const [goal, setGoal] = useState<Goal | ''>(() => valid(saved.goal, GOALS) ?? '');
+  const [mins, setMins] = useState<Minutes | 0>(() => valid(saved.mins, TIMES) ?? 0);
+  const [comfort, setComfort] = useState<Comfort | ''>(() => valid(saved.comfort, COMFORTS) ?? '');
+  useEffect(() => { try { localStorage.setItem('fl-start', JSON.stringify({ step, days, exp, goal, mins, comfort })); } catch { /* optional */ } }, [step, days, exp, goal, mins, comfort]);
   const [picked, setPicked] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -87,7 +95,7 @@ export default function StartPage() {
     setBusy(true); setError('');
     const res = await createPlanFromTemplate(tpl);
     if ('error' in res) { setBusy(false); return setError('Could not create the plan: ' + res.error); }
-    try { localStorage.setItem('fl-plan', res.planId); localStorage.setItem('fl-comfort', comfort); } catch { /* optional */ }
+    try { localStorage.setItem('fl-plan', res.planId); localStorage.setItem('fl-comfort', comfort); localStorage.removeItem('fl-start'); } catch { /* optional */ }
     try { // best effort: the plan is already created even if preferences cannot be saved
       const { data: u } = await supabase.auth.getUser();
       if (u.user && comfort) await supabase.from('user_training_prefs').upsert({ user_id: u.user.id, comfort, session_minutes: mins || null, updated_at: new Date().toISOString() });

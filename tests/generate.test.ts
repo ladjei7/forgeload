@@ -62,3 +62,16 @@ test('if every option for a main pattern is avoided, the plan says so instead of
   assert.ok(r.notes.some((n) => /squats and leg press/.test(n)));
   for (const d of r.days) for (const e of d.ex) assert.equal(levelOf(ex(e.exId)), 1);
 });
+
+test('a beginner asking for 6 days starts on a 4-day plan, with a note saying why', () => {
+  for (const exp of ['new', 'brand_new']) {
+    const r = generatePlan({ days: 6, exp, goal: 'muscle', time: 60, comfort: 'mixed' });
+    assert.equal(r.days.length, 4, exp);
+    assert.ok(r.notes.some(n => /started there/.test(n)), exp);
+  }
+  assert.equal(generatePlan({ days: 6, exp: 'exp', goal: 'muscle', time: 60, comfort: 'all' }).days.length, 6);
+});
+test('1 day a week still produces a full-body rotation', () => {
+  const r = generatePlan({ days: 1, exp: 'brand_new', goal: 'fitness', time: 30, comfort: 'machines' });
+  assert.ok(r.days.length >= 1 && r.days.every(d => d.ex.length >= 3));
+});

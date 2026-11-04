@@ -16,10 +16,15 @@
 Rule: accent marks the one next action. Progress color means progress only. Never color alone: set state also changes fill, outline style and label.
 
 ## Type
-Geist (self-hosted via the `geist` package, preview-only). Tabular numerals everywhere numbers change. Scale: 44 (focus target), 30, 28, 20, 16, 14, 12 (minimum).
+Prototype: Geist (preview-only). Real app: system UI font stack for now (no new dependency, fastest load). Tabular numerals everywhere numbers change. Scale: 44 (focus target), 30, 28, 20, 16, 14, 12 (minimum).
 
 ## Components in the preview
 Sheet (bottom, Escape, focus return), Stepper, Switch, Pill/segmented, SyncChip, Target block, Set row (planned, current, saving, saved, queued, failed), Focus entry, Rest row, Dock, Toast with Undo, Option card, Library row, Rotation pill.
+
+## Real-app status (2026-11-04)
+Done in main: tokens, light theme switch (Settings), logo, nav restyle. On the `product-revision` branch: Home around the next workout (rotation position, duration, last and target per exercise, first-workout state), logger target block, set badges, tap-to-fill previous, saving/saved/failed states, elapsed clock, rest pause, Focus Mode on the same state. Not yet: five-tab nav (Train, Progress), durable offline queue, completion redesign, Progress screen.
+
+Set states in the real app: planned (outlined number), current (orange outline), saving (… and "Saving…"), saved (teal fill and ✓, only after the server confirms), failed (red outline, ↻ and "Not saved. Tap ↻ to retry."). Skipped is not stored yet; an unlogged set simply isn't saved.
 
 ## Implementation sequence (after approval; each step is its own branch and preview)
 1. Tokens and font in the real app (CSS variables, `geist`, light theme switch); no layout change.

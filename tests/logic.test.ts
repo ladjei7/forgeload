@@ -152,3 +152,17 @@ test('tailoring: goal and session length change reps and exercise count, never t
   assert.equal(JSON.stringify(base.days[0].exercises), firstBefore);
   for (const d of s.days) for (const e of d.exercises) assert.ok(e[2] <= e[3] && e[1] >= 1);
 });
+
+test('onboarding v2: 1 day, brand new, new goals and session lengths', async () => {
+  const { recommendPlan, tailorTemplate } = await import('../app/lib/recommend.ts');
+  assert.equal(recommendPlan(1, 'brand_new').primary, 'fbeod');
+  assert.equal(recommendPlan(6, 'brand_new').primary, 'ul2', 'a brand-new lifter picking 6 days is not handed 6 hard sessions');
+  assert.equal(recommendPlan(5, 'brand_new').primary, 'ul2');
+  const tpl = { id: 't', name: 'T', description: '', days: [{ name: 'A', exercises: [['Squat', 3, 5, 8], ['Row', 3, 8, 12], ['Press', 3, 8, 12], ['Curl', 3, 10, 15], ['Calf', 3, 10, 15], ['Abs', 3, 10, 15]] }] } as never;
+  const short = tailorTemplate(tpl, 'muscle', 25); assert.equal((short as { days: { exercises: unknown[] }[] }).days[0].exercises.length, 3);
+  const std = tailorTemplate(tpl, 'muscle', 55); assert.equal((std as { days: { exercises: unknown[] }[] }).days[0].exercises.length, 6, '45-60 min keeps the full plan');
+  const fit = tailorTemplate(tpl, 'fitness', 75) as { days: { exercises: [string, number, number, number][] }[] };
+  assert.ok(fit.days[0].exercises.every(e => e[2] >= 8 && e[3] > e[2]), 'general fitness uses 8+ reps');
+  const fat = tailorTemplate(tpl, 'fat_loss', 75) as { days: { exercises: [string, number, number, number][] }[] };
+  assert.deepEqual(fat.days[0].exercises[0], ['Squat', 3, 5, 8], 'fat loss keeps the muscle-building rep ranges');
+});

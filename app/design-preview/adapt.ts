@@ -33,6 +33,9 @@ export function alternative(exId: string, level: 1 | 2 | 3, avoid: string[], tak
   return candidates(p, level, new Set([...avoid, ...taken, exId]))[0];
 }
 
+/** Every rule threshold in one place. Starting hypotheses, to be tuned with beta data. */
+export const TH = { repeatSwap: 3, steadySessions: 3, comfortUpGood: 3 } as const;
+
 export function suggest(i: AdaptIn): Suggestion[] {
   const out: Omit<Suggestion, 'tier'>[] = []; const level = comfortLevel(i.comfort);
   const recent = i.events.filter((e) => e.d <= WINDOW);
@@ -41,7 +44,7 @@ export function suggest(i: AdaptIn): Suggestion[] {
   const pairs = new Map<string, number>();
   for (const e of recent) if (e.k === 'swap') pairs.set(`${e.from}>${e.to}`, (pairs.get(`${e.from}>${e.to}`) ?? 0) + 1);
   for (const [key, n] of pairs) {
-    const [from, to] = key.split('>'); if (n < 3 || !inPlan(i.plan, from) || from === to) continue;
+    const [from, to] = key.split('>'); if (n < TH.repeatSwap || !inPlan(i.plan, from) || from === to) continue;
     const days = i.plan.filter((d) => d.ex.some((e) => e.exId === from) && !d.ex.some((e) => e.exId === to)).map((d) => d.id);
     if (!days.length) continue;
     out.push({ id: `repeat:${key}`, kind: 'repeat-swap', title: `Use ${nm(i.lib, to)} instead of ${nm(i.lib, from)}?`,
@@ -63,14 +66,14 @@ export function suggest(i: AdaptIn): Suggestion[] {
 
   // 3. Stalled: three sessions in a row with no better top set. Suggest a variation only. Never changes weight or comfort.
   for (const d of i.plan) for (const pe of d.ex) {
-    const h = i.hist[pe.exId]; if (!h || h.length < 3) continue;
+    const h = i.hist[pe.exId]; if (!h || h.length < TH.steadySessions) continue;
     const best = (s: (typeof h)[number]) => s.sets.reduce((a, x) => (x.w > a.w || (x.w === a.w && x.r > a.r) ? x : a), { w: 0, r: 0 });
     const [a, b, c] = [best(h[0]), best(h[1]), best(h[2])]; const better = (x: typeof a, y: typeof a) => x.w > y.w || (x.w === y.w && x.r > y.r);
     if (better(a, b) || better(b, c) || better(a, c)) continue;
     const alt = alternative(pe.exId, level, i.avoid, d.ex.map((e) => e.exId)); if (!alt) continue;
     if (out.some((s) => s.kind === 'stalled' && s.change.t === 'replace' && s.change.from === pe.exId)) continue;
-    out.push({ id: `stall:${pe.exId}`, kind: 'stalled', title: `${nm(i.lib, pe.exId)} has not moved in 3 sessions`,
-      why: `Your best set has not improved over the last three sessions. A different variation, ${nm(i.lib, alt)}, sometimes gets things moving again. Keeping this exercise is also a fine choice.`,
+    out.push({ id: `stall:${pe.exId}`, kind: 'stalled', title: `${nm(i.lib, pe.exId)} has been steady lately`,
+      why: `Your best set has been about the same for your last ${TH.steadySessions} sessions. That can be normal (sleep, stress, a light week), so this is not a verdict. If you'd like to review it, one option is a different variation, ${nm(i.lib, alt)}. Keeping this exercise is also a fine choice.`,
       accept: `Try ${nm(i.lib, alt)}`, change: { t: 'replace', from: pe.exId, to: alt, dayIds: [d.id] } });
   }
 
@@ -88,7 +91,7 @@ export function suggest(i: AdaptIn): Suggestion[] {
   if (level < 3) {
     const good = new Set(recent.filter((e) => e.k === 'feel' && e.v === 'good').map((e) => (e as { ex: string }).ex));
     const bad = recent.some((e) => e.k === 'feel' && e.v !== 'good');
-    if (good.size >= 3 && !bad) {
+    if (good.size >= TH.comfortUpGood && !bad) {
       const next: Comfort = level === 1 ? 'mixed' : 'all';
       out.push({ id: `comfort:${next}`, kind: 'comfort', title: level === 1 ? 'Open up dumbbell options?' : 'Open up barbell options?',
         why: `You told us ${good.size} exercises felt comfortable. If you like, we can start offering ${level === 1 ? 'dumbbell' : 'barbell'} options when you swap or add exercises. This only changes the options we show. Your plan stays as it is.`,

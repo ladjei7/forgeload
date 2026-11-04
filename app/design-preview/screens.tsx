@@ -130,7 +130,8 @@ export function Home({ c }: { c: Ctx }) {
               </span>
             ))}
           </div>
-          <p>{doneCount} of {s.plan.length} workouts</p>
+          <p>{doneCount} {doneCount === 1 ? 'workout' : 'workouts'}</p>
+          <p className="fl-sub" style={{ fontSize: 12 }}>Rotation, not calendar: missed days never skip a workout.</p>
         </div>
         <div className="fl-card" style={{ padding: 14 }}>
           <p className="fl-sub">Bench press</p>
@@ -516,11 +517,11 @@ export function LibraryScreen({ c }: { c: Ctx }) {
 
 /* ---------- Onboarding + generated plan review ---------- */
 const QS: { k: 'days' | 'exp' | 'goal' | 'time' | 'comfort'; q: string; help: string; opts: { v: string | number; t: string; d: string }[] }[] = [
-  { k: 'days', q: 'How many days a week can you train?', help: 'Pick what you can keep doing. Consistency beats ambition.', opts: [2, 3, 4, 5, 6].map((n) => ({ v: n, t: `${n} days`, d: n <= 3 ? 'Full body' : n === 4 ? 'Upper / lower' : 'Split' })) },
-  { k: 'exp', q: 'How would you describe your lifting?', help: 'This sets how fast the targets move.', opts: [{ v: 'new', t: 'New to lifting', d: 'Under 6 months' }, { v: 'some', t: 'Some experience', d: '6 months to 2 years' }, { v: 'exp', t: 'Experienced', d: 'More than 2 years' }] },
-  { k: 'goal', q: 'What matters most right now?', help: 'You can change this later.', opts: [{ v: 'muscle', t: 'Build muscle', d: 'More reps per set' }, { v: 'strength', t: 'Get stronger', d: 'Heavier, fewer reps' }, { v: 'both', t: 'A bit of both', d: 'Balanced' }] },
-  { k: 'time', q: 'How long is a typical session?', help: 'We keep every workout within this limit.', opts: [{ v: 45, t: '45 minutes', d: '4 exercises' }, { v: 60, t: '60 minutes', d: '4 to 5 exercises' }, { v: 90, t: '90 minutes', d: '5 or more' }] },
-  { k: 'comfort', q: 'What exercises would you feel most comfortable starting with?', help: 'This only picks your starting exercises. You can change it any time, and you can swap any exercise later.', opts: [{ v: 'machines', t: 'Mostly machines', d: 'I prefer guided movements while getting comfortable.' }, { v: 'mixed', t: 'Machines and dumbbells', d: 'I like a combination of both.' }, { v: 'all', t: 'All gym equipment', d: 'I am comfortable with barbells, dumbbells, and machines.' }, { v: 'unsure', t: 'I am not sure', d: 'Choose for me.' }] },
+  { k: 'days', q: 'How many days per week can you realistically train?', help: 'Pick what you can keep doing. Consistency beats ambition.', opts: [1, 2, 3, 4, 5, 6].map((n) => ({ v: n, t: `${n} ${n === 1 ? 'day' : 'days'}`, d: n <= 3 ? 'Full body' : n === 4 ? 'Upper / lower' : 'Split (beginners start on 4)' })) },
+  { k: 'exp', q: 'How experienced are you with strength training?', help: 'Not sure? Pick the lower one. It only sets your starting point.', opts: [{ v: 'brand_new', t: 'Brand new', d: 'I have never really lifted' }, { v: 'new', t: 'Beginner', d: 'Under about 6 months' }, { v: 'some', t: 'Intermediate', d: '6 months to 2 years' }, { v: 'exp', t: 'Advanced', d: 'More than 2 years' }] },
+  { k: 'goal', q: "What's your main fitness goal?", help: 'You can change this later.', opts: [{ v: 'muscle', t: 'Build muscle', d: 'More reps per set' }, { v: 'strength', t: 'Get stronger', d: 'Heavier, fewer reps on main lifts' }, { v: 'fat_loss', t: 'Lose body fat', d: 'While keeping or building muscle' }, { v: 'fitness', t: 'Improve general fitness', d: 'Balanced, moderate reps' }] },
+  { k: 'time', q: 'How much time can you spend per workout?', help: 'We keep every workout within this limit.', opts: [{ v: 30, t: '20 to 30 minutes', d: '3 exercises' }, { v: 45, t: '30 to 45 minutes', d: '4 exercises' }, { v: 60, t: '45 to 60 minutes', d: '4 to 5 exercises' }, { v: 90, t: 'More than 60 minutes', d: '5 or more' }] },
+  { k: 'comfort', q: 'What exercises would you feel most comfortable starting with?', help: 'This only picks your starting exercises. You can change it any time, and you can swap any exercise later.', opts: [{ v: 'machines', t: 'Mostly machines', d: 'I prefer guided movements while getting comfortable.' }, { v: 'mixed', t: 'Machines and dumbbells', d: "I'm comfortable combining machines and dumbbells." }, { v: 'all', t: 'All gym equipment', d: "I'm comfortable using barbells, dumbbells, cables, and machines." }, { v: 'unsure', t: "I'm not sure, choose for me", d: 'Recommend an approachable starting point.' }] },
 ];
 export function Onboard({ c, x }: { c: Ctx; x: Extra }) {
   const { ob } = c.s; const q = QS[ob.step]; const val = ob.a[q.k];
@@ -550,7 +551,7 @@ export function Onboard({ c, x }: { c: Ctx; x: Extra }) {
 export function Review({ c }: { c: Ctx }) {
   const { s } = c; const a = s.ob.a; const plan = s.draftPlan ?? [];
   const split = a.days <= 3 ? 'full-body workouts, so each muscle is trained several times a week' : a.days === 4 ? 'an upper/lower split, so each muscle is trained twice a week' : a.days === 5 ? 'a mix of upper/lower and push/pull/legs' : 'push, pull and legs twice a week';
-  const goalTxt = a.goal === 'muscle' ? 'Rep ranges lean higher to build muscle.' : a.goal === 'strength' ? 'Main lifts use lower rep ranges to build strength.' : 'Rep ranges sit in the middle for muscle and strength.';
+  const goalTxt = a.goal === 'muscle' ? 'Rep ranges lean higher to build muscle.' : a.goal === 'strength' ? 'Main lifts use lower rep ranges to build strength.' : a.goal === 'fat_loss' ? 'Rep ranges match muscle building: lifting helps you keep muscle while your eating drives fat loss.' : 'Rep ranges sit in the middle for all-round fitness.';
   const avg = plan.length ? Math.round(plan.reduce((t, d) => t + estMinutes(d.ex), 0) / plan.length) : 0;
   return (
     <div className="fl-scr" key="review">
@@ -559,7 +560,7 @@ export function Review({ c }: { c: Ctx }) {
         <p><b>{a.days} days a week · about {avg} min</b></p>
         <p className="fl-sub" style={{ marginTop: 6 }}>Because you can train {a.days} days, we chose {split}. {goalTxt}</p>
         <div className="fl-row" style={{ marginTop: 10, flexWrap: 'wrap' }}>
-          <span className="fl-chip">{a.exp === 'new' ? 'New to lifting' : a.exp === 'some' ? 'Some experience' : 'Experienced'}</span>
+          <span className="fl-chip">{a.exp === 'brand_new' ? 'Brand new' : a.exp === 'new' ? 'Beginner' : a.exp === 'some' ? 'Intermediate' : 'Advanced'}</span>
           <span className="fl-chip">up to {a.time} min</span>
           <span className="fl-chip">{a.comfort === 'machines' ? 'Mostly machines' : a.comfort === 'mixed' ? 'Machines and dumbbells' : a.comfort === 'all' ? 'All gym equipment' : 'Machines and dumbbells (we chose)'}</span>
         </div>

@@ -1,11 +1,11 @@
 # Adaptive personalization: architecture and roadmap
 
-Status: prototype on the `design-exploration` branch (route `/design-preview`, mock data). Nothing here touches production, the database, or `main`.
+Status (2026-11-04): rules in the prototype (`/design-preview`, mock data). The real app implements the Free swap rules: swap with optional reason, "make it default" suggestion with Undo, comfort preference. Pro rules are prototype only. All thresholds live in one file: `app/lib/rules.ts` (real app) and `TH` in `app/design-preview/adapt.ts` (prototype).
 
 ## Principles
 1. **Suggest, never silently change.** Every change to a plan is something the user accepted. Each suggestion has a plain-language reason, a "No thanks", and an Undo after accepting.
 2. **Comfort is something the user tells us.** It is never inferred from weights, reps, or progress. Getting stronger on a machine press does not mean a barbell is wanted.
-3. **Preferences are editable at any time.** Changing one never rewrites the plan. It only offers optional swaps, one at a time or all at once.
+3. **Preferences are editable at any time.** Changing one never rewrites the plan. It only offers up to two optional swaps at a time; there is no bulk "swap all".
 4. **History is permanent.** Every logged set stores the exercise it was done on. Swapping an exercise in a plan never edits past sets.
 5. **Curated, explainable rules first.** No model. Each rule is a small pure function with tests.
 
@@ -37,16 +37,22 @@ Inputs are an append-only event log (swap, skip, comfort feedback), logged histo
 
 | Rule | Trigger | Proposes |
 |---|---|---|
-| Repeat swap | Same A to B swap 3 times in 30 days | Make B the default (history of A stays) |
+| Repeat swap | Same A to B swap 3 times in 30 days, not counting swaps marked "equipment busy" or "just today" | Make B the default (history of A stays). Accept, No thanks, Undo |
 | Not for me | Skipped 3 times, or marked "Not for me" once | Same-movement alternative inside the comfort range |
-| Stalled | No better top set over 3 sessions | A variation. Keeping it is offered as equally fine. Never changes weight or comfort |
+| Steady lately (Pro) | Same best set for 3 sessions | "Has been steady lately. That can be normal; want to review it?" Never called a plateau. Keeping it is equally fine. Never changes weight or comfort |
 | Time | A workout is longer than the session length | Remove the smallest exercise |
 | Comfort up | "Comfortable" on 3 different exercises, and no "Unsure" or "Not for me" | Offer the next comfort level. Changes the options shown, not the plan |
 | Preference change | User changes comfort | Optional swaps per exercise |
 
 Guardrails with tests: nothing is applied by the engine; large performance gains never produce a comfort or barbell suggestion; replacements respect comfort and avoid list (only an exercise the user chose themselves can exceed it); dismissed suggestions stay hidden; accepting leaves history untouched.
 
-## Data model for the real app (not built)
+## Swap reasons (real app)
+Swapping offers an optional "Why?" with four chips: equipment busy or missing, I prefer another exercise, I'm not comfortable doing it, just changing it today. Skipping it is fine. The reason is stored on the swap event. Equipment and just-today swaps never count toward a "make it default" suggestion, because they say nothing about preference. "Not comfortable" is stored for a later comfort rule; it does not lower the comfort setting by itself.
+
+## Suggestion fatigue
+At most one suggestion card on Home. "No thanks" hides it until new swaps happen; Undo brings it back. Post-workout feedback stays optional.
+
+## Data model for the real app (partly built)
 - `exercises`: curated library with `pattern`, `equipment`, `comfort_level`, primary and secondary muscles, `unilateral`, `bodyweight`.
 - `set_logs.exercise_id` per set. Plans reference exercises but history never does through the plan.
 - `plan_versions`: append-only. Accepting a suggestion adds a version, which is what makes Undo and history safe.
@@ -62,5 +68,5 @@ Guardrails with tests: nothing is applied by the engine; large performance gains
 
 ## Open questions
 - Does an optional feedback card get answered, or ignored? Measure the response rate before building rules that depend on it.
-- Are three repeats the right threshold? It is a guess.
+- Are three repeats the right threshold? It is a guess, now a single constant in `rules.ts` so the beta can tune it.
 - Pro tier fit (untested): suggestions beyond v1 rules could be the paid "intelligence" layer. The v1 rules should stay free.

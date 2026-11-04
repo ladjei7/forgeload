@@ -44,13 +44,13 @@ function Prefs({ c }: { c: Ctx }) {
       {changed && (offers.length === 0 ? <p className="fl-sub">Saved. Your plan already fits this setting.</p> : (
         <div className="fl-card">
           <p><b>Optional swaps for this setting</b></p>
-          <p className="fl-sub" style={{ marginTop: 2 }}>Your plan has not changed. Accept any, all, or none.</p>
-          {offers.length > 1 && <button className="fl-btn sm pri" style={{ marginTop: 8 }} onClick={() => c.applySug(offers, true)}>Swap all {offers.length}</button>}
-          {offers.map((o) => (
+          <p className="fl-sub" style={{ marginTop: 2 }}>Your plan has not changed. Here are up to two options. Accept one, or none.</p>
+          {offers.slice(0, 2).map((o) => (
             <div key={o.id} className="fl-between" style={{ padding: '8px 0', borderTop: '1px solid var(--line)', gap: 8 }}>
               <span style={{ minWidth: 0 }}>{o.title}</span>
               <button className="fl-btn sm sec" onClick={() => c.applySug(o, true)}>Swap</button>
             </div>))}
+          {offers.length > 2 && <p className="fl-sub" style={{ marginTop: 6 }}>More alternatives are in the exercise picker when you swap.</p>}
         </div>))}
       <p style={{ fontWeight: 600, marginTop: 6 }}>Typical session length</p>
       <div className="fl-row" style={{ flexWrap: 'wrap', gap: 6 }}>

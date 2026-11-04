@@ -71,7 +71,9 @@ function how(ex: LibEx, comfort: Comfort): string {
 
 export function generatePlan(inp: GenInput): GenResult {
   const level = comfortLevel(inp.comfort); const avoid = new Set(inp.avoid ?? []);
-  const split = SPLITS[Math.min(6, Math.max(2, inp.days))];
+  const beginner = inp.exp === 'new' || inp.exp === 'brand_new';
+  const effDays = beginner && inp.days > 4 ? 4 : inp.days; // do not hand a beginner 5-6 hard sessions; they can add days later
+  const split = SPLITS[Math.min(6, Math.max(2, effDays))];
   const occ: Partial<Record<Pattern, number>> = {}; // how many times a pattern has been placed so far: later days get the next variation
   const why: Record<string, string> = {}; const said = new Set<string>(); const empty = new Set<Pattern>(); const dropped = new Set<Pattern>(); const days: Day[] = [];
   split.forEach((tpl, di) => {
@@ -100,6 +102,8 @@ export function generatePlan(inp: GenInput): GenResult {
   for (const d of days) for (const e of d.ex) { const m = LIB.find((l) => l.id === e.exId)!.muscle; coverage[m] = (coverage[m] ?? 0) + e.sets; }
   const notes: string[] = [];
   if (level < 3) notes.push('No barbell lifts to start. You can add any exercise later.');
+  if (effDays !== inp.days) notes.push(`You can train ${inp.days} days. Newer lifters usually progress well on 4 and recover better, so we started there. Add days any time.`);
+  if (inp.days === 1) notes.push('With 1 day a week you rotate through 2 full-body workouts, so each week picks up where you left off.');
   if (inp.comfort === 'unsure') notes.push('You were not sure, so we started with machines and dumbbells. Change this any time.');
   const left = [...dropped].filter((p) => !days.some((d) => d.ex.some((e) => PATTERN[e.exId] === p)));
   if (left.length) notes.push(`To keep workouts within ${inp.time} min we left out ${left.map((p) => PATTERN_LABEL[p]).join(', ')}.`);

@@ -1,55 +1,53 @@
-# Repository audit (2026-11-02)
+# Repository, security and test audit
 
-Scope: code in `main` at `44ae4fc`. The live database could not be inspected from here and the repo had no migrations, so database statements below come from earlier setup work, not from a schema dump.
+Last updated 2026-11-04, branch `product-revision` (based on `workout-home`, which is based on `main` at `d10f1d6`). The earlier 2026-11-02 audit is in git history; its fixes are all merged.
 
-## Feature inventory vs the product brief
+## Versions (installed, verified)
+Next.js 16.4.3, React 19.2.8, Tailwind 4.3.3, supabase-js 2.112.4, TypeScript 5.9.3. Next.js was upgraded out of the 16.0 to 16.4.0 advisory range earlier.
 
-| Area | Status |
-|---|---|
-| Auth (email + password, client-side gate) | Works. Gate is client-only; nav shows on /login. |
-| Plans, days, exercises: create, rename, edit sets/reps, reorder, delete | Done |
-| Split templates (PPL x2, Full Body A/B/C, Upper/Lower x2, Anterior/Posterior, PPL/UL, PPL/Arnold) | Done |
-| Exercise library (149 built-in), search with aliases, custom exercises | Done |
-| Log page | **Rebuilt in this branch** (was: manual day dropdown, no resume, duplicate-prone) |
-| History | Works; two bugs fixed here |
-| Next-workout rotation | New in this branch |
-| Previous performance, basic target, rest timer, finish summary | New in this branch |
-| Home dashboard | Placeholder |
-| Onboarding questionnaire | Not started |
-| Substitution, RIR/RPE, set types, kg/lb, notes | Not started |
-| Export, PR history, charts, offline mode | Not started |
-| Entitlements / billing | Not started (intentionally) |
-| Tests | None existed. Logic tests added. |
+## What is real vs prototype
 
-## Bugs found and fixed in this branch
+| Area | Real app | Prototype only |
+|---|---|---|
+| Auth, email confirmation, redirect to the signup origin | Yes | |
+| Plans, templates, rename, reorder, edit sets and reps, replace exercise with Undo | Yes | Expand/collapse editor, rotation pills |
+| Five-question onboarding (final wording) and comfort-aware starter plan | Yes (this branch updates wording and answers) | Full generator with per-exercise reasons |
+| Home around next workout, rotation position, duration, last and target, first-workout state | This branch | |
+| Logger: target, previous, tap-to-fill, saving/saved/failed, rest with pause, elapsed time, Focus Mode | This branch | Offline queue and "Waiting for connection" |
+| Swap for today or in plan, optional reason, "make it default" suggestion | Yes (reason on this branch) | Not-for-me, comfort-up, preference swaps |
+| History, finish summary with heaviest-weight PRs, export (JSON/CSV), account deletion | Yes | Completion redesign |
+| Progress screen, charts, five-tab nav | No | Yes |
+| Set types, RIR/RPE, skipped sets | No (needs migration 010) | Partly |
+| Entitlements | Table and `my_tier()` exist, unused | Free/Pro demo switch |
+| Billing | No | No |
 
-1. **Wrong date for evening workouts.** `session_date` used `toISOString()` (UTC). In Chicago after ~6-7 PM that stores tomorrow's date. Now uses local date.
-2. **History showed the previous day** because `new Date('YYYY-MM-DD')` is parsed as UTC. Now parsed as local.
-3. **No resume.** Refreshing mid-workout lost the session, and starting again created a second one. Now an unfinished session reopens.
-4. **Duplicate sets.** Every tap of the check inserted another row. Now one row per set, taps are ignored while saving, and tapping a done set undoes it.
-5. **Day dropdown listed days from every plan** with no notion of what is next. Now scoped to the plan and driven by the last completed session.
-6. **Previous performance** needed 2+ sessions of the same day and compared by day, not by exercise. Now uses the most recent completed log of that exercise.
-7. **Empty sessions** appeared in History. History now shows completed sessions only; a workout with nothing logged is discarded.
+## Database (inspected live, read-only, 2026-11-04)
+- 772 catalog exercises (71 original, 701 RepDB). 42 `plan_eligible`. **502 have no aliases**, which weakens search ("DB bench"). No duplicate names. Trigram index on name exists.
+- One user, one session, zero logged sets. No real training data is at risk from schema work yet. This is the cheapest time to add set types.
+- `exercise_sets` has no `set_type`, `rir` or `rpe`. Draft `010_set_details_and_rls_perf.sql` adds them (nullable or defaulted, additive). **Not applied.**
+- Migrations applied: 001 to 009. 009 (function hardening) was applied 2026-11-02 with your approval.
 
-## Security and data-integrity findings
+## Security
+| # | Finding | Status |
+|---|---|---|
+| 1 | RLS on every table; owner-only policies on all user data | Verified 2026-11-02: a stranger and an anonymous visitor see 0 rows in every table (live isolation test) |
+| 2 | `my_tier()` was callable by anonymous visitors | Fixed (009) |
+| 3 | Four functions had a mutable search_path | Fixed (009) |
+| 4 | Child rows check their own `user_id`, not the parent's owner. Someone who knows another user's plan id could attach a row to it, but still can't read it. | Low. Fix: add parent-owner checks to `with check` (in 010 draft notes) |
+| 5 | Leaked-password protection | Dashboard setting, may need a paid plan |
+| 6 | Service-role key never used in the app or repo; only the publishable key ships | Verified by inspection |
+| 7 | Entitlements: no write policy for users; client tier is display-only | Verified |
+| 8 | Performance advisor: 21 policies re-evaluate `auth.uid()` per row; 12 foreign keys unindexed | Harmless at 1 user. Fixed in 010 draft |
 
-| # | Finding | Severity | Status |
-|---|---|---|---|
-| 1 | **Next.js 16.3.2 is in an advisory range (16.0.0-16.4.0)**, including critical RCE advisories. Several are Windows-host or image/OG specific and this app is on Vercel (Linux) and does not use `next/image`, so practical exposure looks low, but it should be patched. 16.4.3 is available. | High | Separate branch `chore/next-security` |
-| 2 | `sharp` and `source-map-js` advisories (high). Transitive. | Medium | Fixed by the same upgrade or `npm audit fix`; verify |
-| 3 | Email confirmation is disabled in Supabase (for testing). Anyone can sign up with any address. | Medium | Re-enable before real users |
-| 4 | RLS "own rows" policies exist per earlier setup but were **not re-tested** this session. Needs the three-way test: anonymous, owner, a second authenticated user. | Unknown | Open |
-| 5 | Child tables (`exercise_logs`, `exercise_sets`) carry `user_id`, but a foreign-key reference to another user's parent row is not checked by RLS alone. Needs a policy `with check` that the parent belongs to the user. UUIDs make guessing impractical, but this should be closed. | Low-Med | Open |
-| 6 | No server-side validation. Acceptable for own-data CRUD behind RLS; revisit before paid features. | Low | Noted |
-| 7 | Exercises are referenced by name string in `plan_exercises` and `exercise_logs`. Renaming or substituting an exercise can split its history. Needs a stable exercise id. | Medium | Planned (Phase 3) |
-| 8 | Schema was not version controlled. | Low | Started: `supabase/migrations/` |
-| 9 | No data export or account deletion yet. | Medium | Planned |
-| 10 | The Supabase publishable (anon) key is in the browser by design. Secrets are not in the repo (`.env*` ignored). | OK | Verified by inspection |
+## Tests (run 2026-11-04)
+- `npm test`: **99 pass, 0 fail** (Node test runner, pure logic: progression, rotation, dates, comfort, recommend and tailoring, swap suggestions with reasons, Home summary, generator, adaptation rules, entitlements, RepDB mapping).
+- `npx tsc --noEmit`: clean.
+- `next build`: succeeds.
+- Lint: **10 errors, 1 warning**, all `react-hooks/set-state-in-effect` or similar in pages that predate this branch, plus Settings theme load. Not behavior bugs; worth a cleanup pass.
+- Browser (Playwright against a **mocked** Supabase, not the real database): 14 logger checks (saving shown before confirm, saved only after confirm, failure then retry, rest pause/resume, Focus Mode logs through the same state and auto-advances, standard mode sees the same sets, swap reason stored), Home new vs returning user, Settings comfort, swap and suggestion flows.
+- **Not covered:** real-device mobile browsers, real network loss, the live database end to end, accessibility audit with a screen reader, visual regression.
 
-## Database change in this branch
-
-`supabase/migrations/001_session_state.sql` adds `started_at` and `completed_at` to `workout_sessions`. Additive only; backfills existing sessions as completed using their own date. The old app code keeps working after it runs. Rollback is in the file. **Must be run once by the owner before testing the branch.**
-
-## What is not covered by tests
-
-The unit tests cover progression, rotation and date logic. The Log page was exercised in a real browser against a **simulated** Supabase (load, start, one-tap logging, double-tap protection, reload-resume, finish). It has **not** been tested against the real database or on a physical phone.
+## Test strategy going forward
+1. Keep business rules as pure functions with unit tests (fast, no network).
+2. Browser flows against the mocked API for every logger change (the scripts live outside the repo today; move them into `tests/e2e/` with Playwright as a dev dependency once approved).
+3. Before beta: one scripted run against a throwaway Supabase project with two real accounts (isolation, logging, export, delete).
