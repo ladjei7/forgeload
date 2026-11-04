@@ -52,10 +52,10 @@ Next.js 16.4.3, React 19.2.8, Tailwind 4.3.3, supabase-js 2.112.4, TypeScript 5.
 - Conflicts: the same set edited on two devices at once ends with the last write. Single-device use (the normal case) has no conflict.
 
 ## Tests (run 2026-11-04)
-- `npm test`: **99 pass, 0 fail** (Node test runner, pure logic: progression, rotation, dates, comfort, recommend and tailoring, swap suggestions with reasons, Home summary, generator, adaptation rules, entitlements, RepDB mapping).
+- `npm test`: **130 pass, 0 fail** (Node test runner, pure logic: progression, rotation, dates, comfort, recommend and tailoring, swap suggestions with reasons, Home summary, generator, adaptation rules, entitlements, RepDB mapping).
 - `npx tsc --noEmit`: clean.
 - `next build`: succeeds.
-- Lint: **10 errors, 1 warning**, all `react-hooks/set-state-in-effect` or similar in pages that predate this branch, plus Settings theme load. Not behavior bugs; worth a cleanup pass.
+- Lint: **11 errors, 1 warning** (main: 10). All are React Compiler advisory rules (set-state-in-effect, refs or impure calls in functions the linter cannot prove are event handlers). The React Compiler is not enabled, so behavior is unaffected; worth one cleanup pass. The +1 is a ref-access warning on the workout exercise list from the durable-saving change.
 - Browser (Playwright against a **mocked** Supabase, not the real database): 12 logger checks (saving shown before confirm, saved only after confirm, failure then retry, rest pause/resume, Focus Mode logs through the same state and auto-advances, standard mode sees the same sets, swap reason stored), Home new vs returning user, Settings comfort, swap and suggestion flows.
 - **Not covered:** real-device mobile browsers, real network loss, the live database end to end, accessibility audit with a screen reader, visual regression.
 
