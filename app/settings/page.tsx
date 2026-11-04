@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
+import { pendingOnDevice } from '../lib/outboxSync';
 import { buildExport, setsCsv, download } from '../lib/exportData';
 import type { Comfort } from '../lib/comfort';
 
@@ -79,7 +80,11 @@ export default function SettingsPage() {
       <section className={card}>
         <div className="text-xs uppercase tracking-wide text-fl-tx2">Signed in as</div>
         <div className="mb-3 truncate">{email || 'your account'}</div>
-        <button className={btn} onClick={async () => { await supabase.auth.signOut(); router.replace('/login'); }}>Sign out</button>
+        <button className={btn} onClick={async () => {
+          const n = pendingOnDevice();
+          if (n > 0 && !confirm(`${n} set${n === 1 ? ' is' : 's are'} saved on this device but not yet synced to your account. They stay on this device and sync when you sign back in here. Sign out anyway?`)) return;
+          await supabase.auth.signOut(); router.replace('/login');
+        }}>Sign out</button>
       </section>
 
       <section className={card}>

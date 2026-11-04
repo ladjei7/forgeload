@@ -8,11 +8,14 @@ import { supabase } from '../lib/supabase';
 import { suggestTarget, defaultRestSeconds, type PrevSet } from '../lib/progression';
 import { nextDayId } from '../lib/rotation';
 import { localDateString } from '../lib/dates';
+import { newId, overlay, forSession, type Op } from '../lib/outbox';
+import { ensureInit, getState, subscribe, addOp, dropSession, syncNow } from '../lib/outboxSync';
 
 type Plan = { id: string; name: string };
 type Day = { id: string; day_name: string; sort_order: number };
 type PlanEx = { id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number };
-type SetRow = { weight: string; reps: string; done: boolean; setId?: string; state?: 'saving' | 'failed' };
+// state: 'local' = stored on this device, not yet confirmed by the server; 'failed' = the server rejected it; undefined = saved to the account.
+type SetRow = { weight: string; reps: string; done: boolean; setId?: string; state?: 'local' | 'failed' };
 type Rest = { end: number; total: number; paused?: number };
 type Session = { id: string; workout_day_id: string; started_at: string };
 type Prev = { sets: PrevSet[] };
@@ -69,10 +72,28 @@ export default function LogPage() {
   const [focusId, setFocusId] = useState('');
   const [now, setNow] = useState(() => Date.now());
 
-  const logIds = useRef<Record<string, Promise<string>>>({});
-  const pending = useRef<Set<string>>(new Set());
+  const logIds = useRef<Record<string, string>>({});
+  const lastTap = useRef<Record<string, number>>({});
   const rowsRef = useRef(rows);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
+
+  // Durable saving: mirror the shared outbox and keep each row's saved/local/failed state in step with it.
+  const [ob, setOb] = useState(() => getState());
+  useEffect(() => subscribe(() => {
+    const st = getState(); setOb(st);
+    const pend = new Map<string, 'local' | 'failed'>();
+    for (const o of st.ops) if (o.kind === 'set') pend.set(o.payload.id, o.failed ? 'failed' : 'local');
+    setRows(rs => {
+      let changed = false; const out: Record<string, SetRow[]> = {};
+      for (const [k, list] of Object.entries(rs)) out[k] = list.map(r => {
+        if (!r.done || !r.setId) return r;
+        const want = pend.get(r.setId);
+        if (r.state === want) return r;
+        changed = true; return { ...r, state: want };
+      });
+      return changed ? out : rs;
+    });
+  }), []);
 
   // ---------- loading ----------
 
@@ -134,7 +155,7 @@ export default function LogPage() {
         .from('exercise_logs').select('id, exercise_name, exercise_sets(id, set_number, reps, weight)')
         .eq('workout_session_id', activeSession.id);
       for (const l of (logs ?? []) as unknown as { id: string; exercise_name: string; exercise_sets: { id: string; set_number: number; reps: number; weight: number }[] | null }[]) {
-        logIds.current[l.exercise_name] = Promise.resolve(l.id);
+        logIds.current[l.exercise_name] = l.id;
         saved[l.exercise_name] = {};
         for (const s of l.exercise_sets ?? []) saved[l.exercise_name][s.set_number] = s;
       }
@@ -151,6 +172,18 @@ export default function LogPage() {
         const d = drafts[ex.id]?.[i];
         return { weight: d?.weight ?? '', reps: d?.reps ?? '', done: false };
       });
+    }
+    // Anything stored on this device but not yet on the server wins over what the server returned.
+    if (activeSession) {
+      await ensureInit();
+      const o = overlay(getState().ops, activeSession.id);
+      for (const [name, id] of Object.entries(o.logIds)) if (!logIds.current[name]) logIds.current[name] = id;
+      for (const list of Object.values(next)) list.forEach((r, i) => { if (r.setId && o.deleted.has(r.setId)) list[i] = { ...r, done: false, setId: undefined, state: undefined }; });
+      for (const p of o.sets) {
+        const list = next[p.peId]; if (!list) continue;
+        while (list.length <= p.idx) list.push({ weight: '', reps: '', done: false });
+        list[p.idx] = { weight: String(p.payload.weight), reps: String(p.payload.reps), done: true, setId: p.payload.id, state: p.failed ? 'failed' : 'local' };
+      }
     }
     setRows(next);
   }, []);
@@ -310,20 +343,17 @@ export default function LogPage() {
     }
   }
 
-  function ensureLog(ex: PlanEx): Promise<string> {
-    const existing = logIds.current[ex.exercise_name];
-    if (existing) return existing;
-    const p = (async () => {
-      const { data, error: err } = await supabase.from('exercise_logs').insert([{
-        workout_session_id: session!.id, exercise_name: ex.exercise_name, exercise_id: ex.exercise_id,
-        target_sets: ex.target_sets, target_rep_min: ex.rep_min, target_rep_max: ex.rep_max,
-      }]).select('id').single();
-      if (err || !data) { delete logIds.current[ex.exercise_name]; throw err ?? new Error('no log'); }
-      if (ex.exercise_id) supabase.rpc('touch_exercise', { ex: ex.exercise_id }).then(() => {}, () => {}); // recents; failure is harmless
-      return (data as { id: string }).id;
-    })();
-    logIds.current[ex.exercise_name] = p;
-    return p;
+  /** The log id for this exercise in this workout. New ones are created on the device and queued. */
+  function logIdFor(ex: PlanEx): string {
+    const have = logIds.current[ex.exercise_name];
+    if (have) return have;
+    const id = newId();
+    logIds.current[ex.exercise_name] = id;
+    addOp({ opId: newId(), kind: 'log', sessionId: session!.id, at: Date.now(), payload: {
+      id, workout_session_id: session!.id, exercise_name: ex.exercise_name, exercise_id: ex.exercise_id,
+      target_sets: ex.target_sets, target_rep_min: ex.rep_min, target_rep_max: ex.rep_max,
+    } });
+    return id;
   }
 
   async function doSwap(ex: PlanEx) {
@@ -348,54 +378,41 @@ export default function LogPage() {
     setRows(r => ({ ...r, [exId]: r[exId].map((row, idx) => (idx === i ? { ...row, ...patch } : row)) }));
   }
 
-  async function toggleSet(ex: PlanEx, i: number) {
+  function toggleSet(ex: PlanEx, i: number) {
     if (!session) return;
     const key = `${ex.id}:${i}`;
-    if (pending.current.has(key)) return; // ignore repeated taps while saving
-    pending.current.add(key);
+    const t0 = Date.now();
+    if (t0 - (lastTap.current[key] ?? 0) < 600) return; // a fast double tap must not log and then undo
+    lastTap.current[key] = t0;
     setError('');
-    try {
-      const row = rowsRef.current[ex.id][i];
-      if (row.done) {
-        setRow(ex.id, i, { state: 'saving' });
-        if (row.setId) {
-          const { error: err } = await supabase.from('exercise_sets').delete().eq('id', row.setId);
-          if (err) throw err;
-        }
-        setRow(ex.id, i, { done: false, setId: undefined, state: undefined });
-        return;
-      }
-      // Fast path: an empty box means "use the suggested number".
-      const t = targets[ex.id];
-      const p = prev[ex.exercise_name]?.sets[i] ?? prev[ex.exercise_name]?.sets.at(-1);
-      const weightStr = row.weight !== '' ? row.weight : t.weight !== null ? String(t.weight) : p ? String(p.weight) : '';
-      const repsStr = row.reps !== '' ? row.reps : t.reps !== null ? String(t.reps) : '';
-      const isBw = meta[ex.exercise_id ?? '']?.tracking === 'bodyweight_reps';
-      const weight = isBw && weightStr === '' ? 0 : parseFloat(weightStr), reps = parseInt(repsStr, 10);
-      if (!Number.isFinite(weight) || !Number.isFinite(reps) || reps <= 0) {
-        setError(`Enter weight and reps for ${ex.exercise_name} set ${i + 1}.`);
-        return;
-      }
-      setRow(ex.id, i, { state: 'saving' }); // shown as "Saving", never as saved, until the server confirms
-      const logId = await ensureLog(ex);
-      let setId = row.setId;
-      if (setId) {
-        const { error: err } = await supabase.from('exercise_sets').update({ reps, weight, completed: true }).eq('id', setId);
-        if (err) throw err;
-      } else {
-        const { data, error: err } = await supabase.from('exercise_sets')
-          .insert([{ exercise_log_id: logId, set_number: i + 1, reps, weight, completed: true }]).select('id').single();
-        if (err || !data) throw err ?? new Error('no set');
-        setId = (data as { id: string }).id;
-      }
-      setRow(ex.id, i, { weight: String(weight), reps: String(reps), done: true, setId, state: undefined });
-      startRest(defaultRestSeconds(ex.rep_max));
-    } catch {
-      setRow(ex.id, i, { state: 'failed' });
-      setError('That set did not save. Check your connection and tap the check again. Your numbers are still here.');
-    } finally {
-      pending.current.delete(key);
+    const row = rowsRef.current[ex.id][i];
+    if (row.state === 'failed') { void syncNow(true); return; } // ↻ means retry, never undo
+    if (row.done) {
+      if (row.setId) addOp({ opId: newId(), kind: 'del', sessionId: session.id, at: t0, peId: ex.id, idx: i, setId: row.setId });
+      setRow(ex.id, i, { done: false, setId: undefined, state: undefined });
+      void syncNow();
+      return;
     }
+    // Fast path: an empty box means "use the suggested number".
+    const t = targets[ex.id];
+    const p = prev[ex.exercise_name]?.sets[i] ?? prev[ex.exercise_name]?.sets.at(-1);
+    const weightStr = row.weight !== '' ? row.weight : t.weight !== null ? String(t.weight) : p ? String(p.weight) : '';
+    const repsStr = row.reps !== '' ? row.reps : t.reps !== null ? String(t.reps) : '';
+    const isBw = meta[ex.exercise_id ?? '']?.tracking === 'bodyweight_reps';
+    const weight = isBw && weightStr === '' ? 0 : parseFloat(weightStr), reps = parseInt(repsStr, 10);
+    if (!Number.isFinite(weight) || !Number.isFinite(reps) || reps <= 0) {
+      setError(`Enter weight and reps for ${ex.exercise_name} set ${i + 1}.`);
+      return;
+    }
+    // Stored on the device first (survives refresh and app close), then synced. Shown as saved to
+    // the account only after the server confirms.
+    const logId = logIdFor(ex);
+    const setId = row.setId ?? newId();
+    addOp({ opId: newId(), kind: 'set', sessionId: session.id, at: t0, peId: ex.id, idx: i,
+      payload: { id: setId, exercise_log_id: logId, set_number: i + 1, reps, weight, completed: true } });
+    setRow(ex.id, i, { weight: String(weight), reps: String(reps), done: true, setId, state: 'local' });
+    startRest(defaultRestSeconds(ex.rep_max));
+    void syncNow();
   }
 
   function addSet(ex: PlanEx) {
@@ -418,6 +435,7 @@ export default function LogPage() {
       await supabase.from('exercise_logs').delete().eq('workout_session_id', session.id);
       const { error: err } = await supabase.from('workout_sessions').delete().eq('id', session.id);
       if (err) throw err;
+      dropSession(session.id); // explicit discard: pending writes for this workout are no longer wanted
       lsSet(LS.draft(session.id), null); stopRest();
       setSession(null); await loadPlanDays(planId);
     } catch {
@@ -429,6 +447,11 @@ export default function LogPage() {
     if (!session) return;
     if (doneCount === 0) {
       if (confirm('No sets are logged. Discard this workout?')) await discardWorkout();
+      return;
+    }
+    if (!(await syncNow()) && forSession(getState().ops, session.id).length) {
+      const n = forSession(getState().ops, session.id).filter(o => o.kind === 'set').length;
+      setError(`${n} set${n === 1 ? ' is' : 's are'} saved on this device but not on your account yet. Reconnect, then tap Finish again. Nothing is lost.`);
       return;
     }
     const unchecked = Object.values(rows).flat().length - doneCount;
@@ -524,6 +547,17 @@ export default function LogPage() {
             <button onClick={toggleFocus} aria-pressed={focus} className={`h-9 rounded-full px-3 text-xs font-semibold ${focus ? 'bg-fl-tx text-fl-bg' : 'border border-fl-field text-fl-tx'}`}>{focus ? 'Focus mode on' : 'Focus mode'}</button>
           </div>
           <div className="flex gap-[3px]">{Array.from({ length: totalSets }, (_, i) => <i key={i} className={`h-1 flex-1 rounded-sm ${i < doneSets ? 'bg-fl-ok' : 'bg-fl-s2'}`} />)}</div>
+          {(() => {
+            const mine = forSession(ob.ops, session.id).filter((o): o is Extract<Op, { kind: 'set' }> => o.kind === 'set');
+            const failed = mine.filter(o => o.failed).length, waiting = mine.length - failed;
+            const base = 'mt-2 flex items-center gap-2 text-xs';
+            if (failed) return <p role="alert" className={`${base} text-fl-bad`}>{failed} set{failed === 1 ? '' : 's'} not saved to your account. <button onClick={() => void syncNow(true)} className="underline">Retry</button></p>;
+            if (waiting && !ob.online) return <p role="status" className={`${base} text-fl-tx2`}>Offline. {waiting} set{waiting === 1 ? ' is' : 's are'} saved on this device and will sync when you reconnect.</p>;
+            if (waiting) return <p role="status" className={`${base} text-fl-tx2`}>Syncing {waiting} set{waiting === 1 ? '' : 's'}…</p>;
+            if (doneSets) return <p role="status" className={`${base} text-fl-ok`}>✓ All sets saved to your account</p>;
+            return null;
+          })()}
+          {!ob.storageOk && <p className="mt-1 text-xs text-fl-bad">This browser is not keeping an offline copy (private mode or storage full). Stay connected while you log.</p>}
         </div>
       )}
 
@@ -626,7 +660,9 @@ export default function LogPage() {
                 <div>
                   {rs.some(x => x.done) && (
                     <ul className="mb-3 flex flex-wrap gap-2" aria-label="Saved sets">
-                      {rs.map((x, i) => x.done ? <li key={i} className="rounded-lg bg-fl-ok/15 px-2.5 py-1 text-sm tabular-nums text-fl-ok">✓ Set {i + 1}: {x.weight}×{x.reps}</li> : null)}
+                      {rs.map((x, i) => !x.done ? null : x.state === 'failed'
+                        ? <li key={i}><button onClick={() => toggleSet(ex, i)} className="rounded-lg border border-fl-bad px-2.5 py-1 text-sm tabular-nums text-fl-bad">↻ Set {i + 1}: {x.weight}×{x.reps}, not saved. Retry</button></li>
+                        : <li key={i} className={`rounded-lg px-2.5 py-1 text-sm tabular-nums text-fl-ok ${x.state === 'local' ? 'border border-dashed border-fl-ok' : 'bg-fl-ok/15'}`}>{x.state === 'local' ? '◌' : '✓'} Set {i + 1}: {x.weight}×{x.reps}{x.state === 'local' ? ' (on this device)' : ''}</li>)}
                     </ul>
                   )}
                   {r ? (
@@ -647,9 +683,9 @@ export default function LogPage() {
                             onChange={e => setRow(ex.id, ai, { reps: e.target.value.replace(/\D/g, '') })} className={`${inputCls} mt-1 !h-16 !text-3xl`} />
                         </label>
                       </div>
-                      <button onClick={() => toggleSet(ex, ai)} disabled={r.state === 'saving'}
-                        className={`mt-3 h-16 w-full rounded-2xl text-xl font-bold disabled:opacity-70 ${r.state === 'failed' ? 'bg-fl-bad text-fl-on-acc' : 'bg-fl-acc text-fl-on-acc'}`}>
-                        {r.state === 'saving' ? 'Saving…' : r.state === 'failed' ? `Not saved. Retry set ${ai + 1}` : `Complete set ${ai + 1}`}
+                      <button onClick={() => toggleSet(ex, ai)}
+                        className="mt-3 h-16 w-full rounded-2xl bg-fl-acc text-xl font-bold text-fl-on-acc">
+                        Complete set {ai + 1}
                       </button>
                       <p className="mt-2 text-center text-xs text-fl-tx2">Empty boxes use the target.</p>
                     </div>
@@ -690,13 +726,13 @@ export default function LogPage() {
                     className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : ''}`}
                   />
                   <button
-                    aria-label={r.state === 'saving' ? `Saving set ${i + 1}` : r.state === 'failed' ? `Set ${i + 1} not saved. Retry` : r.done ? `Set ${i + 1} saved. Tap to undo` : `Log set ${i + 1}`} aria-pressed={r.done}
-                    disabled={!session || r.state === 'saving'} onClick={() => toggleSet(ex, i)}
-                    className={`h-14 w-[3.25rem] rounded-xl text-xl font-bold disabled:opacity-40 ${r.state === 'failed' ? 'border-2 border-fl-bad bg-fl-bad/15 text-fl-bad' : r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'} ${r.state === 'saving' ? '!opacity-70' : ''}`}
-                  >{r.state === 'saving' ? '…' : r.state === 'failed' ? '↻' : '✓'}</button>
+                    aria-label={r.state === 'failed' ? `Set ${i + 1} not saved to your account. Retry` : r.state === 'local' ? `Set ${i + 1} saved on this device, waiting to sync. Tap to undo` : r.done ? `Set ${i + 1} saved to your account. Tap to undo` : `Log set ${i + 1}`} aria-pressed={r.done}
+                    disabled={!session} onClick={() => toggleSet(ex, i)}
+                    className={`h-14 w-[3.25rem] rounded-xl text-xl font-bold disabled:opacity-40 ${r.state === 'failed' ? 'border-2 border-fl-bad bg-fl-bad/15 text-fl-bad' : r.state === 'local' ? 'border-2 border-dashed border-fl-ok text-fl-ok' : r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'}`}
+                  >{r.state === 'failed' ? '↻' : r.state === 'local' ? '◌' : '✓'}</button>
                 </div>
-                {r.state === 'saving' && <p className="mt-1 text-right text-xs text-fl-tx2" role="status">Saving…</p>}
-                {r.state === 'failed' && <p className="mt-1 text-right text-xs text-fl-bad" role="alert">Not saved. Tap ↻ to retry.</p>}
+                {r.state === 'local' && !ob.online && <p className="mt-1 text-right text-xs text-fl-tx2" role="status">On this device. Syncs when you reconnect.</p>}
+                {r.state === 'failed' && <p className="mt-1 text-right text-xs text-fl-bad" role="alert">Not saved to your account. Tap ↻ to retry.</p>}
                 </div>
               );
             })}
