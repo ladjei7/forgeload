@@ -1,6 +1,7 @@
 // Pure helpers for the Home screen. No UI, no database. Nothing here invents data:
 // with no history, last performance is null and the week is empty.
-import { suggestTarget, type PrevSet, type Target } from './progression.ts';
+import { suggestTarget, defaultRestSeconds, type PrevSet, type Target } from './progression.ts';
+import { RULES } from './rules.ts';
 
 export type HistEntry = { name: string; exerciseId: string | null; at: string; sets: { set_number: number; reps: number; weight: number }[] };
 export type PlanExLite = { name: string; exerciseId: string | null; sets: number; repMin: number; repMax: number };
@@ -45,3 +46,19 @@ export function weekDots(completedAt: string[], now: Date): boolean[] {
 }
 
 export const todayIndex = (now: Date) => (now.getDay() + 6) % 7;
+
+/** Rough minutes for a planned workout: work time plus the default rest after each set except the last. Shown as "about". */
+export function estimateMinutes(plan: { sets: number; repMax: number }[]): number {
+  let sec = 0, sets = 0;
+  for (const p of plan) { sets += p.sets; sec += p.sets * (RULES.durationEstimate.secondsPerSetWork + defaultRestSeconds(p.repMax)); }
+  if (sets === 0) return 0;
+  const last = plan[plan.length - 1];
+  sec -= defaultRestSeconds(last.repMax); // no rest after the final set
+  return Math.max(5, Math.round(sec / 60 / 5) * 5);
+}
+
+/** "Workout 2 of 4" in the rotation. Position of the next day, 1-based. */
+export function rotationPosition(dayIds: string[], nextId: string | null): { n: number; of: number } | null {
+  const i = nextId ? dayIds.indexOf(nextId) : -1;
+  return i < 0 ? null : { n: i + 1, of: dayIds.length };
+}

@@ -1,47 +1,61 @@
-# Competitive research (partial)
+# Competitive research
 
-Research date: 2026-11-02. Status: **partial.** Read the evidence-quality section before trusting any row.
+Last updated: 2026-11-04. Earlier pass: 2026-11-02. Status: **pricing and free limits verified for 6 of 8 named competitors from official pages or app store listings. User-pain evidence is thin.** Read the evidence column before relying on any row.
 
-## Evidence quality
+## How to read this
 
-| Source | Used for | Reliability |
-|---|---|---|
-| [MacroFactor help: progressive overload](https://help.macrofactorapp.com/en/articles/372-what-does-progressive-overload-mean-in-macrofactor-workouts) | How MacroFactor Workouts decides progression | Official docs. Good. |
-| [Boostcamp: is it free](https://www.boostcamp.app/is-boostcamp-free) | Boostcamp free/Pro split and price | Official page. Good for Boostcamp itself. |
-| [Alpha Progression: best progressive overload apps](https://alphaprogression.com/en/blog/best-progressive-overload-apps) | Alpha's features and price | Alpha's own marketing (it says so). Treat as claims. |
-| [Boostcamp vs Hevy](https://www.boostcamp.app/vs/hevy) | Hevy price and free limits | A competitor's claims about Hevy. **Unverified.** |
+- **Verified:** taken from the company's own help center, pricing page or App Store listing on the date above. Prices are US App Store and change often.
+- **Claim:** from the company's own marketing about itself.
+- **Hearsay:** from a competitor or a review site. Not relied on for decisions.
+- Affiliate "best app" blogs dominated search results and were not used.
 
-**Not verified in this pass:** Hevy's own documentation (blocked in the research environment), Strong, Fitbod, Liftosaur, RP Hypertrophy, MacroFactor pricing, Reddit sentiment (not accessed). Web search mostly returned SEO/affiliate review blogs; none were relied on. Nothing below is a market-size or frequency claim.
+## Comparison
 
-## What was verified
+| App | Free tier | Paid | Progression guidance | Evidence |
+|---|---|---|---|---|
+| **Strong** | Unlimited workouts, **3 custom routines** | $4.99/mo, $29.99/yr, $99.99 lifetime (listing) | Records, 1RM estimate, warm-up and plate calculators. No target-setting described. | Verified: [App Store](https://apps.apple.com/app/id464254577), 4.9 from 109K ratings |
+| **Hevy** | **4 routines, 7 custom exercises, 3 months of data history**; no warm-up calculator | Monthly, annual, lifetime (price not on the help page) | Free: you decide. Pro adds stats (sets per muscle group). | Verified limits: [Hevy help center](https://help.hevyapp.com/hc/en-us/articles/35119778922263-Hevy-Pro-Subscription-How-to-get-Pro-and-What-Does-It-Include). Price: hearsay ($2.99/mo, $23.99/yr per Boostcamp) |
+| **Boostcamp** | Unlimited logging, rest timer, RPE, PRs, large program library | $14.99/mo, $59.99/yr | **Auto progression is paid.** History kept on cancel. | Verified: [official page](https://www.boostcamp.app/is-boostcamp-free) (2026-11-02 pass) |
+| **Alpha Progression** | Logging, manual plans, timers, records, export | $12.99/mo, $79.99/yr | Double progression with gym-specific steps, **automation is paid** | Claim: [Alpha blog](https://alphaprogression.com/en/blog/best-progressive-overload-apps) |
+| **MacroFactor Workouts** | **No free tier**, trial only | $11.99/mo, $47.99/6 mo, $71.99/yr; bundle $89.99/yr | Uses weight, reps and RIR against the assigned range; can raise, hold or lower load | Verified: [price page](https://macrofactor.com/workouts/price/), [help](https://help.macrofactorapp.com/en/articles/372-what-does-progressive-overload-mean-in-macrofactor-workouts) |
+| **Fitbod** | Trial only | $12.99 to $15.99/mo, $79.99 to $95.99/yr (several price tiers listed) | AI-generated workouts, "learns from your edits", weight suggestions from last session | Verified: App Store listing (4.8 from 289K ratings) |
+| **RP Hypertrophy** | Trial unclear | **$34.99/mo, $299.99/yr** | Adjusts week to week from pump, soreness and workload feedback | Verified: [App Store](https://apps.apple.com/app/id1555614554), 4.4 from 161 ratings |
+| **Liftosaur** | Free app with in-app purchases (split not stated) | Not stated on listing | Scriptable progressions (Liftoscript), built-in 5/3/1, GZCLP | Verified features: [App Store](https://apps.apple.com/us/app/liftosaur/id1661880849), [site](https://liftosaur.com/). Pricing not verified |
 
-| | Free | Paid | Progression |
-|---|---|---|---|
-| Boostcamp | Unlimited logging, rest timers, RPE, PR badges, uncapped custom programs, 14k+ programs | Pro $59.99/yr or $14.99/mo | **Auto Progression is Pro-only.** History and self-built programs are kept if you cancel. |
-| Alpha Progression (own claims) | Unlimited logging, manual plans, rest timers, records, CSV export | Pro $12.99/mo or $79.99/yr | Double progression with gym-specific increments; **automated progression is Pro-only.** |
-| Hevy (Boostcamp's claims) | Logger, rest timers; routines and custom exercises capped | $2.99/mo, $23.99/yr, $74.99 lifetime | Free tier: progression left to the lifter. Pro adds "Hevy Trainer" weight suggestions. |
-| MacroFactor Workouts | Not verified | Not verified | Uses logged weight, reps and RIR vs the assigned range; can raise, hold or lower load. Criteria are public; unclear whether each recommendation shows its reasoning. |
+## What this changes
 
-## Findings, ranked
+1. **The free logger market is crowded and cheap.** Strong and Hevy both log unlimited workouts for free, and their paid tiers cost $24 to $30 a year. Forgeload cannot win by charging for basics, and "a better free logger" alone is not a business.
+2. **Free limits are the obvious pressure point.** Strong caps free users at 3 routines. Hevy caps them at 4 routines, 7 custom exercises and 3 months of history. A free tier with unlimited routines, unlimited custom exercises and full history is a concrete, verifiable promise. *Confidence: high that the limits exist. Unknown whether they make people switch.*
+3. **"What to lift next" is paid or absent everywhere we checked.** Boostcamp and Alpha charge for it, Strong and free Hevy leave it to you, and MacroFactor, Fitbod and RP have no free tier. Free, explained targets are a real gap at the free tier. *Confidence: medium. Any competitor could copy it.*
+4. **Adaptive apps are expensive.** MacroFactor ($72/yr), Fitbod (~$80 to $96/yr) and RP ($300/yr) prove people pay for "the app decides". Pro at $39.99/yr sits between the cheap loggers and these. That's a reasonable test price, but only if Pro does real analysis.
+5. **Rotation versus calendar.** A trainer-app feature request with 50 votes asks to pause or push back schedules after missed days ("it just keeps going as wk1 day 7 when in reality I'm only on wk 1 day 2", [ABC Trainerize ideas](https://ideas.abcfitness.com/forums/940789-client-gym-members-abc-trainerize/suggestions/42348535-ability-to-restart-pause-or-push-back-workouts-or)). That's one product's users, not proof of a market gap. *Confidence: low.*
 
-1. **Automated "what to lift next" sits behind a paywall at the competitors we could verify** (Boostcamp, Alpha; Hevy per Boostcamp). A free, explainable version is a real wedge. *Evidence: medium. Risk: any competitor can copy it quickly, so the lasting advantage has to be execution, trust and speed, not the feature.*
-2. **Price anchor.** Hevy's reported price is far below what we first assumed. Our earlier $8/mo, $65/yr hypothesis looks too high next to $2.99/mo. The $4.99/mo, $39.99/yr in the founder brief is more defensible but is still only a test price. *Evidence: low (competitor-sourced).*
-3. **Session-based rotation that survives missed days.** Boostcamp says Hevy routines are single sessions or short cycles. *Evidence: low (competitor's claim). This is a hypothesis to test with real users, not a known gap.*
-4. **Explainable recommendations ("why this target").** MacroFactor publishes its criteria but we could not confirm in-app reasoning per set. *Evidence: low. Hypothesis.*
-5. **Beginner onboarding that builds a plan.** Several competitors do personalised programs. This is table stakes, not a differentiator.
+## Ranked user problems (hypotheses until beta)
 
-## Recommended audience and positioning
+| # | Problem | Evidence | Feasible for us | Likely to drive switching or paying |
+|---|---|---|---|---|
+| 1 | Not knowing what to lift next | Paywalled at Boostcamp and Alpha; the whole premise of MacroFactor, Fitbod and RP | Yes, rules engine exists | Switching: maybe. Paying: yes for deeper versions |
+| 2 | Free-tier caps on routines, custom exercises, history | Verified limits at Strong and Hevy | Yes, we already don't cap | Switching: unknown |
+| 3 | Slow logging between sets | Not verified; this is common sense and our own design priority | Yes | Retention more than switching |
+| 4 | Schedules that break when you miss a day | One feature request, 50 votes | Yes, rotation already implemented | Unknown |
+| 5 | Beginner plans with intimidating lifts | No direct evidence found | Yes, comfort question | Unknown |
+| 6 | Switching cost: years of history in another app | Inferred | Partly, needs CSV import | **High blocker** |
 
-- **Initial audience:** lifters with roughly 0-3 years of experience who follow a structured split and currently use Hevy, Strong, or notes. Beginners come in through the questionnaire in Phase 2.
-- **Positioning (draft, to test):** *the free tracker that tells you what to lift next, and why.* Fast logging, a program that follows your sessions not the calendar, and honest guidance you can override.
+## Recommended position
 
-## Open questions
+**Initial audience:** gym-goers with roughly 0 to 3 years of training who want structure. That covers beginners through the five questions, and early intermediates who use a free logger but don't know how to progress. Experienced lifters stay supported but aren't the launch target. Liftosaur already serves the power users who want scripting.
 
-- Is free progression enough to make someone switch from an app they already have history in? (Switching cost is high; data import will matter.)
-- Do users trust and use the "why" explanation, or ignore it?
-- What would people really pay for after a month of free use?
-- How do Strong, Fitbod, Liftosaur and RP Hypertrophy compare? (Not researched yet.)
+**Positioning to test:** *Know what to lift next, free. Forgeload remembers what you did, sets today's target, and tells you why.* Proof points: unlimited routines, custom exercises and history in Free; targets with reasons; a rotation that never skips a workout because you missed a day.
 
-## Validation plan
+**Why not lead with "adaptive AI":** Fitbod and MacroFactor own that message and have years of data. Our rules are transparent and testable, which is better to lead with than "AI".
 
-20-30 gym-goers across experience levels, including people who use competitors or notes. Tasks: sign up, get or build a plan, log a full workout unassisted, return for a second session, read a target and say what it means. Measure completion without help, second-session return, and whether they would give up their current app. Compliments do not count as retention.
+## Open questions for the beta
+
+- Do people actually follow the target, or ignore it? Measure target hit rate and whether users edit the prefilled numbers.
+- Does free progression make anyone leave Strong or Hevy, or is history import the real blocker? Ask, then measure.
+- Do people read "why this target?" Count opens.
+- What would they pay for after a month? Show the Pro comparison and record intent, without billing.
+
+## Not verified
+
+Hevy prices (help page doesn't list them, and the App Store page was unreachable), Liftosaur pricing, user complaint frequency (Reddit and app review text were not accessible from the research environment), and market size.

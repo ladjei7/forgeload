@@ -36,3 +36,14 @@ test('exercises without ids are matched by normalized name; different pairs are 
   assert.equal(swapSuggestions([swap(1, n1, n2), swap(2, { id: null, name: 'Pull-Up' }, n2), swap(3, n1, n2)], p, NOW).length, 1);
   assert.equal(swapSuggestions([swap(1, A, B), swap(2, A, { id: 'c', name: 'Other' }), swap(3, A, B)], plan, NOW).length, 0);
 });
+
+test('swaps made because equipment was busy, or just for today, never count toward a default', async () => {
+  const { swapSuggestions } = await import('../app/lib/swapSuggestions.ts');
+  const now = Date.parse('2026-11-04T12:00:00Z');
+  const ev = (reason: string | undefined, d: number) => ({ kind: 'swap', created_at: new Date(now - d * 86400000).toISOString(),
+    payload: { from: { id: 'a', name: 'Barbell Row' }, to: { id: 'b', name: 'Seated Cable Row' }, ...(reason ? { reason } : {}) } });
+  const plan = [{ id: 'r1', workout_day_id: 'd1', exercise_id: 'a', exercise_name: 'Barbell Row' }];
+  assert.equal(swapSuggestions([ev('equipment', 1), ev('today', 2), ev('equipment', 3)], plan, now).length, 0);
+  assert.equal(swapSuggestions([ev('prefer', 1), ev('comfort', 2), ev(undefined, 3)], plan, now).length, 1);
+  assert.equal(swapSuggestions([ev('prefer', 1), ev('equipment', 2), ev(undefined, 3)], plan, now).length, 0);
+});

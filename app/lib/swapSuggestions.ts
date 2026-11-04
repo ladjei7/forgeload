@@ -5,8 +5,10 @@ export type EventRow = { kind: string; payload: Record<string, unknown>; created
 export type PlanRow = { id: string; workout_day_id: string; exercise_id: string | null; exercise_name: string };
 export type SwapSuggestion = { sid: string; from: SwapEnd; to: SwapEnd; count: number; rows: PlanRow[] };
 
-export const WINDOW_DAYS = 30;
-export const THRESHOLD = 3;
+import { RULES } from './rules.ts';
+
+export const WINDOW_DAYS = RULES.swapSuggestion.windowDays;
+export const THRESHOLD = RULES.swapSuggestion.threshold;
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export const keyOf = (e: { id: string | null; name: string }) => e.id ?? `n:${norm(e.name)}`;
 const asEnd = (v: unknown): SwapEnd | null => {
@@ -30,6 +32,8 @@ export function swapSuggestions(events: EventRow[], plan: PlanRow[], now = Date.
     if (e.kind !== 'swap') continue;
     const t = Date.parse(e.created_at); const from = asEnd(e.payload.from); const to = asEnd(e.payload.to);
     if (!from || !to || Number.isNaN(t) || t < since || keyOf(from) === keyOf(to)) continue;
+    // "Equipment busy" or "just today" says nothing about preference, so it never counts.
+    if (typeof e.payload.reason === 'string' && RULES.swapSuggestion.ignoredReasons.includes(e.payload.reason)) continue;
     const sid = `${keyOf(from)}>${keyOf(to)}`;
     if (t <= (handled.get(sid) ?? 0)) continue;
     const g = groups.get(sid) ?? { from, to, n: 0 }; g.n++; groups.set(sid, g);

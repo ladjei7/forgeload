@@ -5,15 +5,14 @@ import Image from 'next/image';
 import { supabase } from './lib/supabase';
 import { nextDayId } from './lib/rotation';
 import SwapSuggestionCard from './components/SwapSuggestionCard';
-import { summarize, weekDots, todayIndex, type ExSummary, type HistEntry, type PlanExLite } from './lib/homeSummary';
+import { summarize, weekDots, todayIndex, estimateMinutes, rotationPosition, type ExSummary, type HistEntry, type PlanExLite } from './lib/homeSummary';
 
 type Recent = { id: string; dayName: string; completedAt: string; sets: number };
 type Home = {
   planCount: number;
   planName: string;
   active: { dayName: string } | null;
-  next: { dayName: string; exercises: ExSummary[] } | null;
-  plannedPerWeek: number;
+  next: { dayName: string; exercises: ExSummary[]; pos: { n: number; of: number } | null; minutes: number } | null;
   dots: boolean[];
   emptyPlan: boolean;
   weekCount: number;
@@ -38,7 +37,7 @@ export default function HomePage() {
       try {
         const { data: plans } = await supabase.from('workout_plans').select('id, name').order('created_at');
         const planList = (plans ?? []) as { id: string; name: string }[];
-        const h: Home = { planCount: planList.length, planName: '', active: null, next: null, emptyPlan: false, weekCount: 0, total: 0, recent: [], plannedPerWeek: 0, dots: Array(7).fill(false) };
+        const h: Home = { planCount: planList.length, planName: '', active: null, next: null, emptyPlan: false, weekCount: 0, total: 0, recent: [], dots: Array(7).fill(false) };
 
         // An unfinished workout always comes first.
         const { data: act } = await supabase
@@ -65,7 +64,6 @@ export default function HomePage() {
             for (const r of (exs ?? []) as { workout_day_id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number }[]) {
               byDay.set(r.workout_day_id, [...(byDay.get(r.workout_day_id) ?? []), { name: r.exercise_name, exerciseId: r.exercise_id, sets: r.target_sets, repMin: r.rep_min, repMax: r.rep_max }]);
             }
-            h.plannedPerWeek = dayList.length;
             const lastId = (last?.[0] as { workout_day_id: string } | undefined)?.workout_day_id ?? null;
             const nextId = nextDayId(dayList, lastId, id => byDay.has(id));
             const next = dayList.find(d => d.id === nextId);
@@ -80,7 +78,7 @@ export default function HomePage() {
                 .not('workout_sessions.completed_at', 'is', null).limit(500);
               const entries: HistEntry[] = ((hist ?? []) as unknown as { exercise_name: string; exercise_id: string | null; workout_sessions: { completed_at: string } | { completed_at: string }[] | null; exercise_sets: HistEntry['sets'] | null }[])
                 .map(r => ({ name: r.exercise_name, exerciseId: r.exercise_id, at: one(r.workout_sessions)?.completed_at ?? '', sets: r.exercise_sets ?? [] }));
-              h.next = { dayName: next.day_name, exercises: summarize(planEx, entries) };
+              h.next = { dayName: next.day_name, exercises: summarize(planEx, entries), pos: rotationPosition(dayList.map(d => d.id), next.id), minutes: estimateMinutes(planEx) };
             }
             else h.emptyPlan = true;
           } else h.emptyPlan = true;
@@ -132,7 +130,7 @@ export default function HomePage() {
             <section className={card}>
               <div className="text-xs uppercase tracking-wide text-fl-tx2">In progress</div>
               <h2 className="mb-3 mt-1 text-2xl font-bold">{data.active.dayName}</h2>
-              <Link href="/log" className={primary}>Continue workout</Link>
+              <Link href="/log" className={primary}>Resume workout</Link>
             </section>
           ) : data.planCount === 0 ? (
             <section className={card}>
@@ -153,7 +151,10 @@ export default function HomePage() {
                 <div className="text-xs uppercase tracking-wide text-fl-tx2">Up next · {data.planName}</div>
                 {data.total === 0 && <span className="rounded-full bg-fl-s2 px-2.5 py-1 text-xs text-fl-tx2">First workout</span>}
               </div>
-              <h2 className="mb-3 mt-1 text-2xl font-bold">{data.next.dayName}</h2>
+              <h2 className="mt-1 text-2xl font-bold">{data.next.dayName}</h2>
+              <p className="mb-3 text-sm text-fl-tx2">
+                {data.next.pos ? `Workout ${data.next.pos.n} of ${data.next.pos.of} in your rotation` : ''}{data.next.pos && data.next.minutes ? ' · ' : ''}{data.next.minutes ? `about ${data.next.minutes} min` : ''}
+              </p>
               <ul className="mb-4 divide-y divide-fl-line">
                 {data.next.exercises.slice(0, 6).map(e => (
                   <li key={e.name} className="flex items-baseline justify-between gap-3 py-2.5">
@@ -191,7 +192,7 @@ export default function HomePage() {
             <section className={card} aria-label="This week">
               <div className="mb-3 flex items-baseline justify-between">
                 <h2 className="text-lg font-bold">This week</h2>
-                <span className="text-sm text-fl-tx2">{data.dots.filter(Boolean).length}{data.plannedPerWeek ? ` of ${data.plannedPerWeek}` : ''} workouts</span>
+                <span className="text-sm text-fl-tx2">{data.dots.filter(Boolean).length} {data.dots.filter(Boolean).length === 1 ? 'workout' : 'workouts'}</span>
               </div>
               <div className="flex justify-between">
                 {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => (
@@ -201,7 +202,7 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
-              <p className="mt-3 text-xs text-fl-tx2">{data.total} workouts logged in total.</p>
+              <p className="mt-3 text-xs text-fl-tx2">Your plan follows a rotation, not the calendar: a missed day never skips a workout. {data.total} workouts logged in total.</p>
             </section>
           )}
 

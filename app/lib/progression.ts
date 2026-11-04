@@ -16,7 +16,9 @@ export type Target = {
   reason: string;
 };
 
-export const DEFAULT_INCREMENT = 5; // lb. Kept as a parameter so gyms/units can change it.
+import { RULES } from './rules.ts';
+
+export const DEFAULT_INCREMENT = RULES.progression.incrementLb; // lb. Kept as a parameter so gyms/units can change it.
 
 export function roundToIncrement(value: number, increment: number): number {
   return Math.round(value / increment) * increment;
@@ -81,7 +83,8 @@ export function suggestTarget(
 
 // Simple rest default by rep range. Heavier, lower-rep work gets longer rest.
 export function defaultRestSeconds(repMax: number): number {
-  if (repMax <= 6) return 180;
-  if (repMax <= 10) return 120;
-  return 90;
+  const r = RULES.restSeconds;
+  if (repMax <= r.heavyMaxReps) return r.heavy;
+  if (repMax <= r.moderateMaxReps) return r.moderate;
+  return r.light;
 }

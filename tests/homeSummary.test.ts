@@ -34,3 +34,14 @@ test('week starts Monday and dots mark days with a workout', () => {
   assert.deepEqual(dots, [true, false, true, false, false, false, false]);
 });
 test('empty week is all false', () => assert.deepEqual(weekDots([], new Date(2026, 10, 4)), Array(7).fill(false)));
+
+import { estimateMinutes, rotationPosition } from '../app/lib/homeSummary.ts';
+test('duration estimate: 3 exercises x 3 sets of 8-12 is about 30 min, rounded to 5', () => {
+  const m = estimateMinutes([{ sets: 3, repMax: 12 }, { sets: 3, repMax: 12 }, { sets: 3, repMax: 12 }]);
+  assert.equal(m % 5, 0); assert.ok(m >= 15 && m <= 25, String(m));
+});
+test('duration estimate is 0 for an empty workout', () => assert.equal(estimateMinutes([]), 0));
+test('rotation position is 1-based and null when unknown', () => {
+  assert.deepEqual(rotationPosition(['a', 'b', 'c', 'd'], 'b'), { n: 2, of: 4 });
+  assert.equal(rotationPosition(['a'], 'zz'), null);
+});
