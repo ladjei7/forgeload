@@ -40,7 +40,7 @@ Launch: gym-goers with 0 to 3 years of training who want structure. Beginners ar
 
 ## Next three milestones
 
-1. **Durable logging (Priority 1/4).** A local write queue so a set tapped offline is kept and synced, with a visible "Waiting for connection" state, duplicate-safe retries, and set types and RIR (migration 010). *Done when:* airplane-mode test logs 5 sets, reconnects, and exactly 5 rows exist; refresh mid-save loses nothing.
+1. **Durable logging (Priority 1/4). Built on `durable-saving`, awaiting approval to merge.** A local write queue so a set tapped offline is kept and synced, with a visible "Waiting for connection" state, duplicate-safe retries, and set types and RIR (migration 010). *Done when:* airplane-mode test logs 5 sets, reconnects, and exactly 5 rows exist; refresh mid-save loses nothing.
 2. **Progress and navigation (Priority 4).** Progress screen (per-exercise best set over time, PRs, simple chart), then test the five-tab nav (Home, Plan, Train, Progress, Library) against the current four with 5 people on real tasks. *Done when:* each tester finds "last time I benched" and "start my workout" in under 10 seconds.
 3. **Beta (Priority 8).** 20 to 30 lifters, tracked with privacy-light product events (onboarding done, first workout, second workout within 10 days, target hit rate, "why" opens). *Done when:* we know week-1 and week-4 return rates and the top 3 reasons people would or wouldn't switch.
 

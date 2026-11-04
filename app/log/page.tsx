@@ -41,6 +41,8 @@ function readDrafts(sessionId: string): Record<string, unknown> { try { return J
 function lsSet(key: string, v: string | null) { try { if (v === null) localStorage.removeItem(key); else localStorage.setItem(key, v); } catch { /* storage unavailable: app still works */ } }
 
 const one = <T,>(x: T | T[] | null): T | null => (Array.isArray(x) ? x[0] ?? null : x);
+/** Wall-clock time for event handlers (kept outside the component so render stays pure). */
+const clockNow = () => Date.now();
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 const clean = (v: string) => v.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
 
@@ -293,8 +295,8 @@ export default function LogPage() {
   // ---------- actions ----------
 
   function startRest(seconds: number) {
-    const r = { end: Date.now() + seconds * 1000, total: seconds };
-    setNow(Date.now()); setRest(r); lsSet(LS.rest, JSON.stringify(r));
+    const r = { end: clockNow() + seconds * 1000, total: seconds };
+    setNow(clockNow()); setRest(r); lsSet(LS.rest, JSON.stringify(r));
   }
   function adjustRest(delta: number) {
     if (!rest) return;
@@ -349,7 +351,7 @@ export default function LogPage() {
     if (have) return have;
     const id = newId();
     logIds.current[ex.exercise_name] = id;
-    addOp({ opId: newId(), kind: 'log', sessionId: session!.id, at: Date.now(), payload: {
+    addOp({ opId: newId(), kind: 'log', sessionId: session!.id, at: clockNow(), payload: {
       id, workout_session_id: session!.id, exercise_name: ex.exercise_name, exercise_id: ex.exercise_id,
       target_sets: ex.target_sets, target_rep_min: ex.rep_min, target_rep_max: ex.rep_max,
     } });
@@ -378,10 +380,10 @@ export default function LogPage() {
     setRows(r => ({ ...r, [exId]: r[exId].map((row, idx) => (idx === i ? { ...row, ...patch } : row)) }));
   }
 
-  function toggleSet(ex: PlanEx, i: number) {
+  async function toggleSet(ex: PlanEx, i: number) {
     if (!session) return;
     const key = `${ex.id}:${i}`;
-    const t0 = Date.now();
+    const t0 = clockNow();
     if (t0 - (lastTap.current[key] ?? 0) < 600) return; // a fast double tap must not log and then undo
     lastTap.current[key] = t0;
     setError('');
