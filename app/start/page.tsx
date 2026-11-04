@@ -46,7 +46,7 @@ const COMFORTS: Choice<Comfort>[] = [
 
 const STEPS = ['days', 'experience', 'goal', 'time', 'comfort'] as const;
 const QUESTION = {
-  days: ['How many days a week can you train?', 'Be realistic. A plan you can keep beats a perfect one.'],
+  days: ['How many days per week can you realistically train?', 'Be realistic. A plan you can keep beats a perfect one.'],
   experience: ['How experienced are you with strength training?', 'This helps us avoid starting you too hard. Not sure? Pick the lower one.'],
   goal: ["What's your main fitness goal?", 'This sets your rep ranges. You can change it later.'],
   time: ['How much time can you spend per workout?', 'We will fit the plan to your time.'],
@@ -131,7 +131,7 @@ export default function StartPage() {
     );
   }
 
-  const chips = [`${days} days a week`, EXP.find(e => e.id === exp)?.title, GOALS.find(g => g.id === goal)?.title, TIMES.find(t => t.id === mins)?.title, COMFORTS.find(c => c.id === comfort)?.title];
+  const chips = [`${days} ${days === 1 ? "day" : "days"} a week`, EXP.find(e => e.id === exp)?.title, GOALS.find(g => g.id === goal)?.title, TIMES.find(t => t.id === mins)?.title, COMFORTS.find(c => c.id === comfort)?.title];
   const others = rec ? [rec.primary, ...rec.alternatives].filter(id => id !== chosenId) : [];
 
   return (

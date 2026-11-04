@@ -44,7 +44,7 @@ Next.js 16.4.3, React 19.2.8, Tailwind 4.3.3, supabase-js 2.112.4, TypeScript 5.
 - `npx tsc --noEmit`: clean.
 - `next build`: succeeds.
 - Lint: **10 errors, 1 warning**, all `react-hooks/set-state-in-effect` or similar in pages that predate this branch, plus Settings theme load. Not behavior bugs; worth a cleanup pass.
-- Browser (Playwright against a **mocked** Supabase, not the real database): 14 logger checks (saving shown before confirm, saved only after confirm, failure then retry, rest pause/resume, Focus Mode logs through the same state and auto-advances, standard mode sees the same sets, swap reason stored), Home new vs returning user, Settings comfort, swap and suggestion flows.
+- Browser (Playwright against a **mocked** Supabase, not the real database): 12 logger checks (saving shown before confirm, saved only after confirm, failure then retry, rest pause/resume, Focus Mode logs through the same state and auto-advances, standard mode sees the same sets, swap reason stored), Home new vs returning user, Settings comfort, swap and suggestion flows.
 - **Not covered:** real-device mobile browsers, real network loss, the live database end to end, accessibility audit with a screen reader, visual regression.
 
 ## Test strategy going forward
