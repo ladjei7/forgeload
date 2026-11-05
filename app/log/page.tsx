@@ -2,6 +2,7 @@
 import { logEvent } from '../lib/events';
 import { SWAP_REASONS, type SwapReason } from '../lib/rules';
 import ExercisePicker from '../components/ExercisePicker';
+import HowTo, { type HowToInfo } from '../components/HowTo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
@@ -55,7 +56,7 @@ export default function LogPage() {
   const [suggestedDayId, setSuggestedDayId] = useState('');
   const [emptyDays, setEmptyDays] = useState<string[]>([]);
   const [exercises, setExercises] = useState<PlanEx[]>([]);
-  const [meta, setMeta] = useState<Record<string, { tracking: string; load: string }>>({});
+  const [meta, setMeta] = useState<Record<string, { tracking: string; load: string; howto: HowToInfo }>>({});
   const [prev, setPrev] = useState<Record<string, Prev>>({});
   const [bestWeight, setBestWeight] = useState<Record<string, number>>({});
   const [session, setSession] = useState<Session | null>(null);
@@ -110,9 +111,10 @@ export default function LogPage() {
     // How each exercise is logged (bodyweight, per-hand weights). Missing info = normal weight x reps.
     const metaIds = list.map(e => e.exercise_id).filter(Boolean) as string[];
     if (metaIds.length) {
-      const { data: mdata } = await supabase.from('exercises').select('id, tracking_type, load_convention').in('id', metaIds);
-      const m: Record<string, { tracking: string; load: string }> = {};
-      for (const r of (mdata ?? []) as { id: string; tracking_type: string; load_convention: string }[]) m[r.id] = { tracking: r.tracking_type, load: r.load_convention };
+      const { data: mdata } = await supabase.from('exercises').select('id, tracking_type, load_convention, instructions, muscle_group, equipment').in('id', metaIds);
+      const m: Record<string, { tracking: string; load: string; howto: HowToInfo }> = {};
+      for (const r of (mdata ?? []) as { id: string; tracking_type: string; load_convention: string; instructions: string | null; muscle_group: string | null; equipment: string | null }[])
+        m[r.id] = { tracking: r.tracking_type, load: r.load_convention, howto: { instructions: r.instructions, muscle: r.muscle_group, equipment: r.equipment } };
       setMeta(m);
     } else setMeta({});
 
@@ -621,6 +623,7 @@ export default function LogPage() {
               {session && rs.length > 0 && <span className="shrink-0 text-xs text-fl-tx2">{rs.filter(r => r.done).length}/{rs.length}</span>}
             </div>
             <div className="text-sm text-fl-tx2">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} reps{loadNote ? ` · ${loadNote}` : ''}</div>
+            <HowTo key={ex.exercise_id ?? ex.exercise_name} name={ex.exercise_name} exerciseId={ex.exercise_id} info={ex.exercise_id ? (m?.howto ?? undefined) : null} />
             {readSwaps(session?.id)[ex.id] && <div className="text-xs text-fl-tx2">Swapped for today from {readSwaps(session?.id)[ex.id].fromName}</div>}
             {session && !rs.some(r => r.done) && (swapFor === ex.id ? (
               <div className="mt-2 rounded-xl bg-fl-s2 p-3">

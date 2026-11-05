@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import Link from 'next/link';
 import ExercisePicker from '../components/ExercisePicker';
+import HowTo from '../components/HowTo';
 import { logEvent } from '../lib/events';
 import { TEMPLATES } from '../lib/templates';
 import { createPlanFromTemplate } from '../lib/applyTemplate';
@@ -233,6 +234,7 @@ export default function PlanPage() {
                 <button onClick={() => moveExercise(i, 1)} disabled={i === exercises.length - 1} aria-label="Move down" style={{ background: 'none', border: 'none', color: i === exercises.length - 1 ? 'var(--fl-line)' : 'var(--fl-tx2)', cursor: 'pointer', fontSize: '16px' }}>▼</button>
                 <button onClick={() => removeExercise(ex.id)} aria-label="Remove" style={{ background: 'none', border: 'none', color: 'var(--fl-tx2)', cursor: 'pointer', fontSize: '18px' }}>✕</button>
               </div>
+              <HowTo key={ex.exercise_id ?? ex.exercise_name} name={ex.exercise_name} exerciseId={ex.exercise_id} info={ex.exercise_id ? undefined : null} compact />
               {editId === ex.id && (
                 <div style={{ marginTop: '0.6rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
