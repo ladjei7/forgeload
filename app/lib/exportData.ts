@@ -49,7 +49,7 @@ export function setsCsv(x: Export): string {
   const lines = ['date,workout,exercise,set,weight_lb,reps'];
   for (const s of x.sessions) {
     const logs = (s.exercise_logs as Row[] | null) ?? [];
-    const day = ((s.workout_days as Row | Row[] | null) && (Array.isArray(s.workout_days) ? (s.workout_days as Row[])[0] : s.workout_days as Row))?.day_name;
+    const day = (s.day_name as string | null) ?? ((s.workout_days as Row | Row[] | null) && (Array.isArray(s.workout_days) ? (s.workout_days as Row[])[0] : s.workout_days as Row))?.day_name;
     for (const l of logs) for (const st of ((l.exercise_sets as Row[] | null) ?? []))
       lines.push([s.completed_at ?? s.session_date, day, l.exercise_name, st.set_number, st.weight, st.reps].map(q).join(','));
   }

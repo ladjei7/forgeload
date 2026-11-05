@@ -4,12 +4,13 @@ import { supabase } from '../lib/supabase';
 import Link from 'next/link';
 import ExercisePicker from '../components/ExercisePicker';
 import HowTo from '../components/HowTo';
+import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
 import { logEvent } from '../lib/events';
 import { TEMPLATES } from '../lib/templates';
 import { createPlanFromTemplate } from '../lib/applyTemplate';
 
 
-type Plan = { id: string; name: string };
+type Plan = { id: string; name: string; is_active?: boolean | null };
 type Day = { id: string; day_name: string; sort_order: number };
 type PlanEx = { id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number };
 
@@ -21,6 +22,7 @@ const h2 = { fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '0.75rem' } a
 export default function PlanPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [planId, setPlanId] = useState('');
+  const [currentId, setCurrentId] = useState('');
   const [days, setDays] = useState<Day[]>([]);
   const [dayId, setDayId] = useState('');
   const [exercises, setExercises] = useState<PlanEx[]>([]);
@@ -48,12 +50,12 @@ export default function PlanPage() {
   useEffect(() => { if (dayId) loadExercises(dayId); else setExercises([]); }, [dayId]);
 
   async function loadPlans() {
-  const { data } = await supabase.from('workout_plans').select('id, name').order('created_at');
+  const { data } = await supabase.from('workout_plans').select('id, name, is_active').order('created_at');
   if (!data) return;
   setPlans(data);
-  setPlanId(prev =>
-    data.find(p => p.id === prev) ? prev : (data[data.length - 1]?.id ?? '')
-  );
+  const cur = pickCurrent(data as Plan[], storedPlanId())?.id ?? '';
+  setCurrentId(cur);
+  setPlanId(prev => (data.find(p => p.id === prev) ? prev : cur));
 }
   async function loadDays(id: string) {
     const { data } = await supabase.from('workout_days').select('id, day_name, sort_order').eq('plan_id', id).order('sort_order');
@@ -66,9 +68,9 @@ export default function PlanPage() {
 
   async function createPlan() {
     if (!planName.trim()) return;
-    const { data, error } = await supabase.from('workout_plans').insert([{ name: planName.trim() }]).select().single();
+    const { data, error } = await supabase.from('workout_plans').insert([{ name: planName.trim(), is_active: plans.length === 0 }]).select().single();
     if (error) return setMessage('Error: ' + error.message);
-    setPlanName(''); await loadPlans(); setPlanId(data.id); setMessage('Plan created: ' + data.name);
+    setPlanName(''); await loadPlans(); setPlanId(data.id); setMessage(plans.length === 0 ? 'Plan created: ' + data.name : `Plan created: ${data.name}. Your current plan is unchanged until you tap "Make this my current plan".`);
   }
   async function addDay() {
     if (!dayName.trim() || !planId) return;
@@ -99,11 +101,16 @@ export default function PlanPage() {
     const tpl = TEMPLATES.find(t => t.id === tplId);
     if (!tpl || busy) return;
     setBusy(true);
-    const res = await createPlanFromTemplate(tpl);
+    const res = await createPlanFromTemplate(tpl, { current: plans.length === 0 });
     setBusy(false);
     if ('error' in res) return setMessage('Error: ' + res.error);
     await loadPlans(); setPlanId(res.planId);
-    setMessage(tpl.name + ' added. Rename days or swap exercises below to make it yours.');
+    setMessage(tpl.name + ' added. Rename days or swap exercises below to make it yours.' + (plans.length ? ' Your current plan is unchanged until you tap "Make this my current plan".' : ''));
+  }
+  async function makeCurrent() {
+    const ok = await setCurrentPlan(planId);
+    setCurrentId(planId);
+    setMessage(ok ? `${plans.find(p => p.id === planId)?.name} is now your current plan. Your history is unchanged.` : 'Switched on this device, but it could not be saved to your account. Check your connection and try again.');
   }
   async function renamePlan() {
     const cur = plans.find(p => p.id === planId);
@@ -159,7 +166,8 @@ export default function PlanPage() {
     await supabase.from('plan_exercises').delete().eq('id', id); await loadExercises(dayId);
   }
   async function removeDay(id: string) {
-    if (!confirm('Delete this day and all its exercises?')) return;
+    const name = days.find(d => d.id === id)?.day_name ?? 'this workout';
+    if (!confirm(`Remove ${name} from this plan? Workouts you already did stay in your History.`)) return;
     await supabase.from('workout_days').delete().eq('id', id); await loadDays(planId);
   }
   async function removePlan(id: string) {
@@ -172,6 +180,16 @@ export default function PlanPage() {
     <main style={{ minHeight: '100vh', background: 'var(--fl-bg)', color: 'var(--fl-tx)', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Your Plan</h1>
       <Link href="/library" style={{ display: 'inline-block', marginBottom: '1rem', color: 'var(--fl-acc)' }}>Browse exercise library →</Link>
+
+      {currentId && (
+        <div style={card}>
+          <h2 style={{ ...h2, marginBottom: '0.25rem' }}>Training days</h2>
+          <p style={{ color: 'var(--fl-tx2)', fontSize: '14px', marginBottom: '0.75rem' }}>
+            Your current plan is {plans.find(p => p.id === currentId)?.name}. Want to train more or fewer days? We&apos;ll build a new plan and keep everything you&apos;ve logged.
+          </p>
+          <Link href="/start?change=1" style={{ ...btn, display: 'block', textAlign: 'center', textDecoration: 'none' }}>Change training days</Link>
+        </div>
+      )}
 
       <div style={card}>
         <h2 style={h2}>Start from a template</h2>
@@ -193,6 +211,9 @@ export default function PlanPage() {
             {planId && <button onClick={() => removePlan(planId)} style={{ ...btn, width: 'auto', background: 'var(--fl-s2)', color: 'var(--fl-bad)' }}>Delete</button>}
           </div>
         )}
+        {plans.length > 1 && planId && (planId === currentId
+          ? <p style={{ color: 'var(--fl-tx2)', fontSize: '13px', marginBottom: '0.75rem' }}>✓ This is your current plan. Home and Log follow it.</p>
+          : <button onClick={makeCurrent} style={{ ...btn, background: 'var(--fl-s2)', color: 'var(--fl-tx)', marginBottom: '0.75rem' }}>Make this my current plan</button>)}
         <input style={{ ...input, marginBottom: '0.75rem' }} placeholder="New plan name (e.g. LURLPPR)" value={planName} onChange={e => setPlanName(e.target.value)} />
         <button onClick={createPlan} style={btn}>Create New Plan</button>
       </div>

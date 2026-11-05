@@ -21,6 +21,7 @@ type ExerciseLog = {
 type Session = {
   id: string;
   session_date: string;
+  day_name: string | null;
   workout_days: { day_name: string } | null;
   exercise_logs: ExerciseLog[];
 };
@@ -39,6 +40,7 @@ export default function HistoryPage() {
       .select(`
         id,
         session_date,
+        day_name,
         workout_days ( day_name ),
         exercise_logs (
           id,
@@ -89,7 +91,7 @@ export default function HistoryPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
-                {session.workout_days?.day_name ?? 'Workout'}
+                {session.day_name ?? session.workout_days?.day_name ?? 'Workout'}
               </h2>
               <p style={{ color: 'var(--fl-tx2)', fontSize: '13px' }}>
                 {parseLocalDate(session.session_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}

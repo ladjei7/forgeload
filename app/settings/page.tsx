@@ -88,6 +88,12 @@ export default function SettingsPage() {
       </section>
 
       <section className={card}>
+        <h2 className="mb-1 text-lg font-bold">Training days</h2>
+        <p className="mb-3 text-sm text-fl-tx2">Want to train more or fewer days a week? We&apos;ll build a new plan to match. Your old plan and everything you&apos;ve logged are kept.</p>
+        <Link href="/start?change=1" className="flex h-12 items-center justify-center rounded-xl bg-fl-s2 font-semibold">Change training days</Link>
+      </section>
+
+      <section className={card}>
         <h2 className="mb-1 text-lg font-bold">Appearance</h2>
         <p className="mb-3 text-sm text-fl-tx2">Dark is the default. Light is easier to read in bright gyms and outdoors. This is saved on this device.</p>
         <div role="radiogroup" aria-label="Theme" className="flex gap-2">

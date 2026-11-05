@@ -6,7 +6,8 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 // Creates a plan from a template. Each template exercise is linked to a library exercise by id:
 // exact name first; otherwise the shortest result containing every word; otherwise the template's
 // own name with no link. Nothing is guessed.
-export async function createPlanFromTemplate(tpl: PlanTemplate): Promise<{ planId: string } | { error: string }> {
+// `current: false` adds the plan without making it the current one (see currentPlan.ts).
+export async function createPlanFromTemplate(tpl: PlanTemplate, opts: { current?: boolean } = {}): Promise<{ planId: string } | { error: string }> {
   const wanted = [...new Set(tpl.days.flatMap(d => d.exercises.map(e => e[0])))];
   const found: Record<string, { id: string; name: string } | null> = {};
   await Promise.all(wanted.map(async w => {
@@ -20,7 +21,7 @@ export async function createPlanFromTemplate(tpl: PlanTemplate): Promise<{ planI
     found[w] = hits[0] ?? null;
   }));
   const resolve = (want: string) => ({ name: found[want]?.name ?? want, id: found[want]?.id ?? null });
-  const { data: plan, error: pErr } = await supabase.from('workout_plans').insert([{ name: tpl.name }]).select().single();
+  const { data: plan, error: pErr } = await supabase.from('workout_plans').insert([{ name: tpl.name, is_active: opts.current ?? true }]).select().single();
   if (pErr || !plan) return { error: pErr?.message ?? 'could not create plan' };
   const { data: newDays, error: dErr } = await supabase.from('workout_days')
     .insert(tpl.days.map((d, i) => ({ plan_id: plan.id, day_name: d.name, sort_order: i }))).select('id, sort_order');

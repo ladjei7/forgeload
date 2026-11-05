@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from './lib/supabase';
 import { nextDayId } from './lib/rotation';
+import { pickCurrent } from './lib/pickCurrent';
 import SwapSuggestionCard from './components/SwapSuggestionCard';
 import { summarize, weekDots, todayIndex, estimateMinutes, rotationPosition, type ExSummary, type HistEntry, type PlanExLite } from './lib/homeSummary';
 
@@ -35,20 +36,20 @@ export default function HomePage() {
     supabase.auth.getSession().then(({ data: s }) => setEmail(s.session?.user.email ?? ''));
     (async () => {
       try {
-        const { data: plans } = await supabase.from('workout_plans').select('id, name').order('created_at');
-        const planList = (plans ?? []) as { id: string; name: string }[];
+        const { data: plans } = await supabase.from('workout_plans').select('id, name, is_active').order('created_at');
+        const planList = (plans ?? []) as { id: string; name: string; is_active: boolean | null }[];
         const h: Home = { planCount: planList.length, planName: '', active: null, next: null, emptyPlan: false, weekCount: 0, total: 0, recent: [], dots: Array(7).fill(false) };
 
         // An unfinished workout always comes first.
         const { data: act } = await supabase
-          .from('workout_sessions').select('id, workout_days(day_name, plan_id)')
+          .from('workout_sessions').select('id, day_name, workout_days(day_name, plan_id)')
           .is('completed_at', null).order('started_at', { ascending: false }).limit(1);
-        const a = act?.[0] as unknown as { workout_days: { day_name: string; plan_id: string } | { day_name: string; plan_id: string }[] | null } | undefined;
-        if (a) h.active = { dayName: one(a.workout_days)?.day_name ?? 'Workout' };
+        const a = act?.[0] as unknown as { day_name: string | null; workout_days: { day_name: string; plan_id: string } | { day_name: string; plan_id: string }[] | null } | undefined;
+        if (a) h.active = { dayName: a.day_name ?? one(a.workout_days)?.day_name ?? 'Workout' };
 
         if (planList.length) {
           const stored = lsGet('fl-plan');
-          const plan = planList.find(p => p.id === stored) ?? planList[planList.length - 1];
+          const plan = pickCurrent(planList, stored)!;
           h.planName = plan.name;
           const { data: days } = await supabase
             .from('workout_days').select('id, day_name, sort_order').eq('plan_id', plan.id).order('sort_order');
@@ -91,15 +92,15 @@ export default function HomePage() {
         const [{ count: total }, { count: week }, { data: rec }] = await Promise.all([
           supabase.from('workout_sessions').select('id, exercise_logs!inner(exercise_sets!inner(id))', { count: 'exact', head: true }).not('completed_at', 'is', null),
           supabase.from('workout_sessions').select('id, exercise_logs!inner(exercise_sets!inner(id))', { count: 'exact', head: true }).not('completed_at', 'is', null).gte('completed_at', weekAgo),
-          supabase.from('workout_sessions').select('id, completed_at, workout_days(day_name), exercise_logs!inner(exercise_sets!inner(id))')
+          supabase.from('workout_sessions').select('id, completed_at, day_name, workout_days(day_name), exercise_logs!inner(exercise_sets!inner(id))')
             .not('completed_at', 'is', null).order('completed_at', { ascending: false }).limit(3),
         ]);
         h.total = total ?? 0; h.weekCount = week ?? 0;
         h.recent = ((rec ?? []) as unknown as {
-          id: string; completed_at: string; workout_days: { day_name: string } | { day_name: string }[] | null;
+          id: string; completed_at: string; day_name: string | null; workout_days: { day_name: string } | { day_name: string }[] | null;
           exercise_logs: { exercise_sets: { id: string }[] | null }[] | null;
         }[]).map(r => ({
-          id: r.id, dayName: one(r.workout_days)?.day_name ?? 'Workout', completedAt: r.completed_at,
+          id: r.id, dayName: r.day_name ?? one(r.workout_days)?.day_name ?? 'Workout', completedAt: r.completed_at,
           sets: (r.exercise_logs ?? []).reduce((n, l) => n + (l.exercise_sets?.length ?? 0), 0),
         }));
         setData(h);

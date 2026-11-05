@@ -1,12 +1,13 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { TEMPLATES } from '../lib/templates';
 import { recommendPlan, tailorTemplate, GOAL_NOTE, TIME_NOTE, type Experience, type Goal, type Minutes } from '../lib/recommend';
 import { createPlanFromTemplate } from '../lib/applyTemplate';
 import { applyComfort, type Comfort } from '../lib/comfort';
 import { supabase } from '../lib/supabase';
+import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
 
 type Choice<T> = { id: T; icon: string; title: string; sub: string };
 
@@ -66,9 +67,28 @@ function Card<T extends string | number>({ c, on, pick }: { c: Choice<T>; on: bo
 }
 
 export default function StartPage() {
+  return <Suspense fallback={null}><StartFromParams /></Suspense>;
+}
+
+// ?change=1: someone with a plan is changing their training days. Same questions, new plan, old plan kept.
+function StartFromParams() {
+  const change = useSearchParams()?.has('change') ?? false;
+  return <StartFlow key={change ? 'change' : 'start'} change={change} />;
+}
+
+function StartFlow({ change }: { change: boolean }) {
   const router = useRouter();
+  const KEY = change ? 'fl-change' : 'fl-start';
   // Answers survive a refresh or a trip away from the page (this browser only), so nobody has to start over.
-  const saved = useState(() => { try { return JSON.parse(localStorage.getItem('fl-start') ?? '{}') as Record<string, unknown>; } catch { return {}; } })[0];
+  // When changing, earlier answers are offered again (except days, which is what they came to change).
+  const saved = useState(() => {
+    try {
+      const inProgress = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Record<string, unknown>;
+      if (!change || Object.keys(inProgress).length) return inProgress;
+      const prior = JSON.parse(localStorage.getItem('fl-answers') ?? '{}') as Record<string, unknown>;
+      return { ...prior, days: 0, step: 0, comfort: prior.comfort ?? localStorage.getItem('fl-comfort') ?? '' };
+    } catch { return {}; }
+  })[0];
   const valid = <T,>(v: unknown, opts: Choice<T>[]): T | undefined => opts.find(o => o.id === v)?.id;
   const [step, setStep] = useState(() => Math.min(Number(saved.step) || 0, STEPS.length - 1));
   const [days, setDays] = useState(() => valid(saved.days, DAYS) ?? 0);
@@ -76,7 +96,28 @@ export default function StartPage() {
   const [goal, setGoal] = useState<Goal | ''>(() => valid(saved.goal, GOALS) ?? '');
   const [mins, setMins] = useState<Minutes | 0>(() => valid(saved.mins, TIMES) ?? 0);
   const [comfort, setComfort] = useState<Comfort | ''>(() => valid(saved.comfort, COMFORTS) ?? '');
-  useEffect(() => { try { localStorage.setItem('fl-start', JSON.stringify({ step, days, exp, goal, mins, comfort })); } catch { /* optional */ } }, [step, days, exp, goal, mins, comfort]);
+  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify({ step, days, exp, goal, mins, comfort })); } catch { /* optional */ } }, [KEY, step, days, exp, goal, mins, comfort]);
+  const [current, setCurrent] = useState<{ name: string; workouts: number; unfinished: boolean } | null>(null);
+  useEffect(() => {
+    if (!change) return;
+    (async () => {
+      try {
+        const { data: plans } = await supabase.from('workout_plans').select('id, name, is_active').order('created_at');
+        const cur = pickCurrent((plans ?? []) as { id: string; name: string; is_active: boolean | null }[], storedPlanId());
+        if (!cur) return;
+        const [{ count }, { data: open }, { data: prefs }] = await Promise.all([
+          supabase.from('workout_days').select('id', { count: 'exact', head: true }).eq('plan_id', cur.id),
+          supabase.from('workout_sessions').select('id').is('completed_at', null).limit(1),
+          supabase.from('user_training_prefs').select('comfort, session_minutes').maybeSingle(),
+        ]);
+        setCurrent({ name: cur.name, workouts: count ?? 0, unfinished: (open ?? []).length > 0 });
+        // Fill in what the account remembers if this device doesn't.
+        const p = prefs as { comfort: string | null; session_minutes: number | null } | null;
+        if (p?.comfort) setComfort(c => c || (valid(p.comfort, COMFORTS) ?? ''));
+        if (p?.session_minutes) setMins(m => m || (TIMES.reduce((a, b) => Math.abs(b.id - p.session_minutes!) < Math.abs(a.id - p.session_minutes!) ? b : a).id));
+      } catch { /* the questions still work without this */ }
+    })();
+  }, [change]);
   const [picked, setPicked] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -95,7 +136,8 @@ export default function StartPage() {
     setBusy(true); setError('');
     const res = await createPlanFromTemplate(tpl);
     if ('error' in res) { setBusy(false); return setError('Could not create the plan: ' + res.error); }
-    try { localStorage.setItem('fl-plan', res.planId); localStorage.setItem('fl-comfort', comfort); localStorage.removeItem('fl-start'); } catch { /* optional */ }
+    await setCurrentPlan(res.planId); // best effort beyond this device; the plan exists either way
+    try { localStorage.setItem('fl-comfort', comfort); localStorage.setItem('fl-answers', JSON.stringify({ exp, goal, mins, comfort })); localStorage.removeItem(KEY); } catch { /* optional */ }
     try { // best effort: the plan is already created even if preferences cannot be saved
       const { data: u } = await supabase.auth.getUser();
       if (u.user && comfort) await supabase.from('user_training_prefs').upsert({ user_id: u.user.id, comfort, session_minutes: mins || null, updated_at: new Date().toISOString() });
@@ -114,8 +156,11 @@ export default function StartPage() {
     return (
       <main className="mx-auto max-w-xl px-4 pb-10 pt-6 text-fl-tx">
         {bar}
-        <h1 className="mb-1 text-3xl font-bold leading-tight">{QUESTION[key][0]}</h1>
-        <p className="mb-6 text-fl-tx2">{QUESTION[key][1]}</p>
+        {change && step === 0 && <div className="mb-2 text-xs uppercase tracking-wide text-fl-acc">Change training days</div>}
+        <h1 className="mb-1 text-3xl font-bold leading-tight">{change && key === 'days' ? 'How many days per week can you train now?' : QUESTION[key][0]}</h1>
+        <p className="mb-6 text-fl-tx2">{change && key === 'days' && current
+          ? `Your current plan, ${current.name}, has ${current.workouts} ${current.workouts === 1 ? 'workout' : 'workouts'}. Pick what fits your week now. Everything you've logged stays.`
+          : change && step > 0 ? 'Your earlier answer is selected. Tap it to keep it, or pick another.' : QUESTION[key][1]}</p>
         <div className="space-y-3">
           {key === 'days' && DAYS.map(c => <Card key={c.id} c={c} on={days === c.id} pick={v => answer(() => setDays(v))} />)}
           {key === 'experience' && EXP.map(c => <Card key={c.id} c={c} on={exp === c.id} pick={v => answer(() => setExp(v))} />)}
@@ -125,7 +170,7 @@ export default function StartPage() {
         </div>
         <div className="mt-6 flex items-center justify-between text-sm">
           {step > 0 ? <button onClick={() => setStep(step - 1)} className="h-11 px-2 text-fl-tx2">← Back</button> : <span />}
-          <Link href="/plan" className="text-fl-tx2 underline-offset-2 hover:underline">Build it myself instead</Link>
+          <Link href="/plan" className="text-fl-tx2 underline-offset-2 hover:underline">{change ? 'Keep my current plan' : 'Build it myself instead'}</Link>
         </div>
       </main>
     );
@@ -163,11 +208,20 @@ export default function StartPage() {
               </details>
             ))}
           </div>
+          {change && current && (
+            <div className="mb-4 rounded-2xl border border-fl-field bg-fl-s2 p-4 text-sm leading-relaxed">
+              <p className="font-semibold">You&apos;ll switch from {current.name} ({current.workouts} {current.workouts === 1 ? 'workout' : 'workouts'}) to {tpl.name} ({tpl.days.length} {tpl.days.length === 1 ? 'workout' : 'workouts'}).</p>
+              <p className="mt-1 text-fl-tx2">You start at workout 1 of the new plan. Your old plan and everything you&apos;ve logged are kept, and your weights carry over to the same exercises. You can switch back any time on the Plan tab.</p>
+            </div>
+          )}
+          {change && current?.unfinished && (
+            <p role="alert" className="mb-3 text-sm text-fl-bad">⚠ You have an unfinished workout. <Link href="/log" className="underline">Finish or discard it</Link> before switching plans.</p>
+          )}
           {error && <p role="alert" className="mb-3 text-sm text-fl-bad">{error}</p>}
-          <button onClick={create} disabled={busy} className="h-14 w-full rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc disabled:opacity-60">
-            {busy ? 'Creating...' : 'Create this plan'}
+          <button onClick={create} disabled={busy || (change && !!current?.unfinished)} className="h-14 w-full rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc disabled:opacity-60">
+            {busy ? (change ? 'Switching...' : 'Creating...') : change ? 'Switch to this plan' : 'Create this plan'}
           </button>
-          <p className="mt-2 text-center text-xs text-fl-tx2">You can rename days and swap any exercise afterward.</p>
+          <p className="mt-2 text-center text-xs text-fl-tx2">{change ? <Link href="/plan" className="underline-offset-2 hover:underline">Keep my current plan</Link> : 'You can rename days and swap any exercise afterward.'}</p>
           {others.length > 0 && (
             <div className="mt-6">
               <div className="mb-2 text-xs uppercase tracking-wide text-fl-tx2">Other options</div>

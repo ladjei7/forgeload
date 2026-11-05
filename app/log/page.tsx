@@ -8,11 +8,12 @@ import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 import { suggestTarget, defaultRestSeconds, type PrevSet } from '../lib/progression';
 import { nextDayId } from '../lib/rotation';
+import { pickCurrent, setCurrentPlan } from '../lib/currentPlan';
 import { localDateString } from '../lib/dates';
 import { newId, overlay, forSession, type Op } from '../lib/outbox';
 import { ensureInit, getState, subscribe, addOp, dropSession, syncNow } from '../lib/outboxSync';
 
-type Plan = { id: string; name: string };
+type Plan = { id: string; name: string; is_active?: boolean | null };
 type Day = { id: string; day_name: string; sort_order: number };
 type PlanEx = { id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number };
 // state: 'local' = stored on this device, not yet confirmed by the server; 'failed' = the server rejected it; undefined = saved to the account.
@@ -225,7 +226,7 @@ export default function LogPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { data: pData } = await supabase.from('workout_plans').select('id, name').order('created_at');
+        const { data: pData } = await supabase.from('workout_plans').select('id, name, is_active').order('created_at');
         const planList = (pData ?? []) as Plan[];
         setPlans(planList);
         const savedRest = lsGet(LS.rest);
@@ -249,7 +250,7 @@ export default function LogPage() {
           return;
         }
         const stored = lsGet(LS.plan);
-        const pid = planList.find(p => p.id === stored)?.id ?? planList[planList.length - 1].id;
+        const pid = pickCurrent(planList, stored)!.id;
         setPlanId(pid);
         await loadPlanDays(pid);
       } catch {
@@ -314,7 +315,7 @@ export default function LogPage() {
   function stopRest() { setRest(null); lsSet(LS.rest, null); }
 
   async function changePlan(pid: string) {
-    setPlanId(pid); lsSet(LS.plan, pid); setShowPicker(false);
+    setPlanId(pid); setShowPicker(false); void setCurrentPlan(pid);
     await loadPlanDays(pid);
   }
   async function changeDay(id: string) {
