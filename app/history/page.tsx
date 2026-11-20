@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import Link from 'next/link';
+import { ui } from '../components/ui';
 import { parseLocalDate } from '../lib/dates';
 
 type SetData = {
@@ -74,73 +76,77 @@ export default function HistoryPage() {
     return '→';
   }
 
-  return (
-    <main style={{ minHeight: '100vh', background: 'var(--fl-bg)', color: 'var(--fl-tx)', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>History</h1>
+  // Compare with the most recent earlier session that included the same exercise (not just the session before).
+  function previousVolume(sessionIndex: number, name: string) {
+    for (const older of sessions.slice(sessionIndex + 1)) {
+      const l = older.exercise_logs.find(x => x.exercise_name === name);
+      if (l && l.exercise_sets.length) return totalVolume(l.exercise_sets);
+    }
+    return null;
+  }
+  const TREND = {
+    '↑': { cls: 'text-fl-ok', label: 'More total weight than last time' },
+    '↓': { cls: 'text-fl-tx2', label: 'Less total weight than last time' },
+    '→': { cls: 'text-fl-tx2', label: 'About the same as last time' },
+  } as const;
 
-      {loading && <p style={{ color: 'var(--fl-tx2)' }}>Loading...</p>}
+  return (
+    <main className={ui.main}>
+      <h1 className={`${ui.h1} mb-5`}>History</h1>
+
+      {loading && <p className="text-fl-tx2">Loading...</p>}
 
       {!loading && sessions.length === 0 && (
-        <div style={{ background: 'var(--fl-s1)', borderRadius: '12px', padding: '1.5rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--fl-tx2)' }}>No sessions yet. Log your first workout.</p>
-        </div>
+        <section className={`${ui.card} text-center`}>
+          <p className="mb-4 text-fl-tx2">No workouts yet. Finished workouts show up here with every set you logged.</p>
+          <Link href="/log" className={ui.primary}>Start a workout</Link>
+        </section>
       )}
 
-      {sessions.map((session, sessionIndex) => (
-        <div key={session.id} style={{ background: 'var(--fl-s1)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <div>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
-                {session.day_name ?? session.workout_days?.day_name ?? 'Workout'}
-              </h2>
-              <p style={{ color: 'var(--fl-tx2)', fontSize: '13px' }}>
+      <div className="space-y-4">
+        {sessions.map((session, sessionIndex) => {
+          const setCount = session.exercise_logs.reduce((n, l) => n + l.exercise_sets.length, 0);
+          return (
+            <section key={session.id} className={ui.card}>
+              <h2 className="text-xl font-bold">{session.day_name ?? session.workout_days?.day_name ?? 'Workout'}</h2>
+              <p className="text-sm text-fl-tx2">
                 {parseLocalDate(session.session_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                {setCount > 0 && ` · ${setCount} ${setCount === 1 ? 'set' : 'sets'}`}
               </p>
-            </div>
-          </div>
 
-          {session.exercise_logs.map(log => {
-            const volume = totalVolume(log.exercise_sets);
-            const prevSession = sessions[sessionIndex + 1];
-            const prevLog = prevSession?.exercise_logs.find(l => l.exercise_name === log.exercise_name);
-            const prevVolume = prevLog ? totalVolume(prevLog.exercise_sets) : null;
-            const trend = getTrend(volume, prevVolume);
-
-            return (
-              <div key={log.id} style={{ borderTop: '1px solid var(--fl-line)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 'bold' }}>{log.exercise_name}</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {trend && (
-                      <span style={{
-                        fontSize: '18px',
-                        color: trend === '↑' ? 'var(--fl-ok)' : trend === '↓' ? 'var(--fl-bad)' : 'var(--fl-tx2)'
-                      }}>
-                        {trend}
-                      </span>
-                    )}
-                    <span style={{ color: 'var(--fl-tx2)', fontSize: '12px' }}>
-                      {volume > 0 ? `${volume.toLocaleString()} lbs total` : ''}
-                    </span>
-                  </div>
-                </div>
-
-                {log.exercise_sets
-                  .sort((a, b) => a.set_number - b.set_number)
-                  .map(set => (
-                    <p key={set.set_number} style={{ color: 'var(--fl-tx2)', fontSize: '13px', marginBottom: '2px' }}>
-                      Set {set.set_number}: {set.weight} lbs × {set.reps} reps
-                    </p>
-                  ))}
-
-                {log.exercise_sets.length === 0 && (
-                  <p style={{ color: 'var(--fl-tx2)', fontSize: '13px' }}>No sets logged</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ))}
+              <ul className="mt-3 divide-y divide-fl-line border-t border-fl-line">
+                {session.exercise_logs.map(log => {
+                  const volume = totalVolume(log.exercise_sets);
+                  const trend = getTrend(volume, previousVolume(sessionIndex, log.exercise_name));
+                  const sorted = [...log.exercise_sets].sort((a, b) => a.set_number - b.set_number);
+                  return (
+                    <li key={log.id} className="py-3">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <h3 className="min-w-0 font-semibold">{log.exercise_name}</h3>
+                        <span className="flex shrink-0 items-baseline gap-1.5 text-xs tabular-nums text-fl-tx2">
+                          {trend && <span className={`text-base font-bold ${TREND[trend].cls}`} title={TREND[trend].label}>
+                            <span aria-hidden="true">{trend}</span><span className="sr-only">{TREND[trend].label}</span></span>}
+                          {volume > 0 && `${volume.toLocaleString()} lb total`}
+                        </span>
+                      </div>
+                      {sorted.length > 0 ? (
+                        <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={`${log.exercise_name} sets`}>
+                          {sorted.map(set => (
+                            <li key={set.set_number} className="rounded-lg bg-fl-s2 px-2.5 py-1 text-sm tabular-nums">
+                              <span className="sr-only">Set {set.set_number}: </span>
+                              {set.weight > 0 ? <>{set.weight} lb × {set.reps}</> : <>{set.reps} reps</>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="mt-1 text-sm text-fl-tx2">No sets logged</p>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
     </main>
   );
 }

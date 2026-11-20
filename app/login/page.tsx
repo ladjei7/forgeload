@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Image from 'next/image';
+import { ui } from '../components/ui';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 import { friendlyAuthError } from '../lib/authErrors';
@@ -36,33 +37,35 @@ export default function LoginPage() {
     }
   }
 
-  const input = { width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--fl-line)', background: 'var(--fl-s2)', color: 'var(--fl-tx)', fontSize: '16px', marginBottom: '0.75rem', boxSizing: 'border-box' as const };
-
   return (
-    <main style={{ minHeight: '100vh', background: 'var(--fl-bg)', color: 'var(--fl-tx)', padding: '2rem', maxWidth: '400px', margin: '0 auto' }}>
-      <h1 style={{ margin: '0 0 1.25rem' }}>
-        <Image src="/logo.png" alt="Forgeload" width={640} height={456} priority style={{ width: '70%', maxWidth: 260, height: 'auto', display: 'block', margin: '0 auto' }} />
+    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6 py-10 text-fl-tx">
+      <h1 className="mb-6">
+        <Image src="/logo.png" alt="Forgeload" width={640} height={456} priority className="mx-auto block h-auto w-[70%] max-w-[260px]" />
       </h1>
-      <p style={{ color: 'var(--fl-tx2)', marginBottom: '2rem' }}>{mode === 'signin' ? 'Sign in to your account' : 'Create your account'}</p>
-      <form onSubmit={submit} noValidate>
-        <input style={input} type="email" placeholder="Email" autoComplete="email" inputMode="email" aria-label="Email" value={email} onChange={e => setEmail(e.target.value)} />
-        <input style={input} type="password" placeholder="Password (6+ characters)" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} aria-label="Password" value={password} onChange={e => setPassword(e.target.value)} />
-        <button type="submit" disabled={busy} aria-busy={busy} style={{ width: '100%', padding: '0.75rem', minHeight: 48, borderRadius: '8px', background: 'var(--fl-acc)', color: 'var(--fl-on-acc)', fontWeight: 'bold', fontSize: '16px', border: 'none', cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1 }}>
-          {busy ? (mode === 'signin' ? 'Signing in…' : 'Creating account…') : mode === 'signin' ? 'Sign In' : 'Sign Up'}
+      <h2 className="text-2xl font-bold">{mode === 'signin' ? 'Welcome back' : 'Create your account'}</h2>
+      <p className="mb-6 mt-1 text-fl-tx2">{mode === 'signin' ? 'Sign in to pick up where you left off.' : 'Free. Your plan and every set you log, saved to your account.'}</p>
+      <form onSubmit={submit} noValidate className="space-y-3">
+        <label className="block">
+          <span className={ui.label}>Email</span>
+          <input className={ui.input} type="email" autoComplete="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className={ui.label}>Password{mode === 'signup' ? ' (6 or more characters)' : ''}</span>
+          <input className={ui.input} type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)} />
+        </label>
+        <button type="submit" disabled={busy} aria-busy={busy} className={`${ui.primary} !mt-5 h-14 text-lg`}>
+          {busy ? (mode === 'signin' ? 'Signing in…' : 'Creating account…') : mode === 'signin' ? 'Sign in' : 'Create account'}
         </button>
       </form>
       {message && (
         <p role={message.kind === 'error' ? 'alert' : 'status'}
-          style={{ marginTop: '1rem', fontSize: '14px', lineHeight: 1.45, padding: '0.75rem', borderRadius: '8px',
-            color: message.kind === 'error' ? 'var(--fl-bad)' : 'var(--fl-ok)',
-            border: `1px solid ${message.kind === 'error' ? 'var(--fl-bad)' : 'var(--fl-ok)'}`,
-            background: 'var(--fl-s1)' }}>
+          className={`mt-4 rounded-xl border bg-fl-s1 p-3 text-sm leading-relaxed ${message.kind === 'error' ? 'border-fl-bad text-fl-bad' : 'border-fl-ok text-fl-ok'}`}>
           {message.kind === 'error' ? '⚠ ' : '✓ '}{message.text}
         </p>
       )}
       <button type="button" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setMessage(null); }}
-        style={{ display: 'block', width: '100%', minHeight: 44, color: 'var(--fl-tx2)', marginTop: '0.5rem', textAlign: 'center', cursor: 'pointer', background: 'none', border: 'none', fontSize: '15px' }}>
-        {mode === 'signin' ? 'No account? Sign up' : 'Have an account? Sign in'}
+        className="mt-3 h-12 w-full text-center text-fl-tx2">
+        {mode === 'signin' ? <>No account? <span className="font-semibold text-fl-tx">Sign up</span></> : <>Have an account? <span className="font-semibold text-fl-tx">Sign in</span></>}
       </button>
     </main>
   );

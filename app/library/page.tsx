@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
+import { Icon } from '../components/ui';
 import ExerciseFilters, { clearFacetCache, useFacets } from '../components/ExerciseFilters';
 
 type Ex = {
@@ -244,7 +245,7 @@ export default function LibraryPage() {
                   <div className="truncate text-sm text-fl-tx2">{ex.muscle_group} · {ex.equipment}</div>
                 </button>
                 <button onClick={() => toggleFav(ex)} aria-pressed={favs.has(ex.id)} aria-label={favs.has(ex.id) ? `Remove ${ex.name} from favorites` : `Add ${ex.name} to favorites`}
-                  className={`h-11 w-11 shrink-0 rounded-xl text-2xl ${favs.has(ex.id) ? 'text-yellow-300' : 'text-fl-tx2'}`}>{favs.has(ex.id) ? '★' : '☆'}</button>
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${favs.has(ex.id) ? 'text-fl-acc' : 'text-fl-tx2'}`}><Icon name="star" size={22} filled={favs.has(ex.id)} /></button>
               </div>
               {open && (
                 <div className="mt-3 space-y-2 border-t border-fl-line pt-3 text-sm">

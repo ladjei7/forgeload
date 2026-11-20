@@ -1,5 +1,6 @@
 'use client';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
+import { Icon, LevelBars } from '../components/ui';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { TEMPLATES } from '../lib/templates';
@@ -9,7 +10,10 @@ import { applyComfort, type Comfort } from '../lib/comfort';
 import { supabase } from '../lib/supabase';
 import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
 
-type Choice<T> = { id: T; icon: string; title: string; sub: string };
+// Session length shown as the minutes themselves (upper end of the range).
+const Mins = ({ n }: { n: string }) => <span className="flex flex-col items-center leading-none"><span className="text-base font-bold">{n}</span><span className="mt-0.5 text-[10px] font-medium text-fl-tx2">min</span></span>;
+
+type Choice<T> = { id: T; icon: ReactNode; title: string; sub: string };
 
 const DAYS: Choice<number>[] = [
   { id: 1, icon: '1', title: '1 day', sub: 'Better than none. The plan rotates week to week.' },
@@ -20,29 +24,29 @@ const DAYS: Choice<number>[] = [
   { id: 6, icon: '6', title: '6 days', sub: 'All in. Recovery matters here.' },
 ];
 const EXP: Choice<Experience>[] = [
-  { id: 'brand_new', icon: '🌱', title: 'Brand new', sub: 'I have never really lifted' },
-  { id: 'new', icon: '🌿', title: 'Beginner', sub: 'Under about 6 months of steady training' },
-  { id: 'some', icon: '🔥', title: 'Intermediate', sub: 'About 6 months to 2 years' },
-  { id: 'experienced', icon: '🏋️', title: 'Advanced', sub: 'More than 2 years, I know my way around' },
+  { id: 'brand_new', icon: <LevelBars level={1} />, title: 'Brand new', sub: 'I have never really lifted' },
+  { id: 'new', icon: <LevelBars level={2} />, title: 'Beginner', sub: 'Under about 6 months of steady training' },
+  { id: 'some', icon: <LevelBars level={3} />, title: 'Intermediate', sub: 'About 6 months to 2 years' },
+  { id: 'experienced', icon: <LevelBars level={4} />, title: 'Advanced', sub: 'More than 2 years, I know my way around' },
 ];
 const GOALS: Choice<Goal>[] = [
-  { id: 'muscle', icon: '💪', title: 'Build muscle', sub: 'Size and shape' },
-  { id: 'strength', icon: '⚡', title: 'Get stronger', sub: 'Heavier weight on the big lifts' },
-  { id: 'fat_loss', icon: '🔥', title: 'Lose body fat', sub: 'While keeping or building muscle' },
-  { id: 'fitness', icon: '❤️', title: 'Improve general fitness', sub: 'Feel stronger and fitter overall' },
+  { id: 'muscle', icon: <Icon name="grow" size={26} />, title: 'Build muscle', sub: 'Size and shape' },
+  { id: 'strength', icon: <Icon name="barbell" size={26} />, title: 'Get stronger', sub: 'Heavier weight on the big lifts' },
+  { id: 'fat_loss', icon: <Icon name="flame" size={26} />, title: 'Lose body fat', sub: 'While keeping or building muscle' },
+  { id: 'fitness', icon: <Icon name="heart" size={26} />, title: 'Improve general fitness', sub: 'Feel stronger and fitter overall' },
 ];
 const TIMES: Choice<Minutes>[] = [
-  { id: 25, icon: '⏱️', title: '20 to 30 minutes', sub: 'Quick and focused' },
-  { id: 40, icon: '🕐', title: '30 to 45 minutes', sub: 'A solid session' },
-  { id: 55, icon: '🕑', title: '45 to 60 minutes', sub: 'The usual' },
-  { id: 75, icon: '🕰️', title: 'More than 60 minutes', sub: 'No rush' },
+  { id: 25, icon: <Mins n="30" />, title: '20 to 30 minutes', sub: 'Quick and focused' },
+  { id: 40, icon: <Mins n="45" />, title: '30 to 45 minutes', sub: 'A solid session' },
+  { id: 55, icon: <Mins n="60" />, title: '45 to 60 minutes', sub: 'The usual' },
+  { id: 75, icon: <Mins n="60+" />, title: 'More than 60 minutes', sub: 'No rush' },
 ];
 
 const COMFORTS: Choice<Comfort>[] = [
-  { id: 'machines', icon: '🛠️', title: 'Mostly machines', sub: 'I prefer guided movements while getting comfortable.' },
-  { id: 'mixed', icon: '🔀', title: 'Machines and dumbbells', sub: "I'm comfortable combining machines and dumbbells." },
-  { id: 'all', icon: '🏋️', title: 'All gym equipment', sub: "I'm comfortable using barbells, dumbbells, cables, and machines." },
-  { id: 'unsure', icon: '🤷', title: "I'm not sure, choose for me", sub: 'Recommend an approachable starting point.' },
+  { id: 'machines', icon: <Icon name="machine" size={26} />, title: 'Mostly machines', sub: 'I prefer guided movements while getting comfortable.' },
+  { id: 'mixed', icon: <Icon name="dumbbell" size={26} />, title: 'Machines and dumbbells', sub: "I'm comfortable combining machines and dumbbells." },
+  { id: 'all', icon: <Icon name="barbell" size={26} />, title: 'All gym equipment', sub: "I'm comfortable using barbells, dumbbells, cables, and machines." },
+  { id: 'unsure', icon: <Icon name="help" size={26} />, title: "I'm not sure, choose for me", sub: 'Recommend an approachable starting point.' },
 ];
 
 const STEPS = ['days', 'experience', 'goal', 'time', 'comfort'] as const;

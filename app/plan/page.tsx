@@ -8,16 +8,13 @@ import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
 import { logEvent } from '../lib/events';
 import { TEMPLATES } from '../lib/templates';
 import { createPlanFromTemplate } from '../lib/applyTemplate';
+import { ui, Icon, Notice } from '../components/ui';
 
 
 type Plan = { id: string; name: string; is_active?: boolean | null };
 type Day = { id: string; day_name: string; sort_order: number };
 type PlanEx = { id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number };
 
-const card = { background: 'var(--fl-s1)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem' } as const;
-const input = { width: '100%', boxSizing: 'border-box', minWidth: 0, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--fl-line)', background: 'var(--fl-s2)', color: 'var(--fl-tx)', fontSize: '16px' } as const;
-const btn = { width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--fl-acc)', color: 'var(--fl-on-acc)', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', border: 'none' } as const;
-const h2 = { fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '0.75rem' } as const;
 
 export default function PlanPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -33,7 +30,10 @@ export default function PlanPage() {
   const [sets, setSets] = useState('');
   const [repMin, setRepMin] = useState('');
   const [repMax, setRepMax] = useState('');
-  const [message, setMessage] = useState('');
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  // Problems ("Error: ...", missing or wrong input) show in red; everything else is a confirmation.
+  const setMessage = (text: string) => setMsg(text ? { kind: /^Error|^Fill in|^Check the|^Pick an|same exercise|could not be saved/.test(text) ? 'error' : 'ok', text: text.replace(/^Error: /, 'Something went wrong: ') } : null);
+  useEffect(() => { if (msg?.kind !== 'ok') return; const t = setTimeout(() => setMsg(null), 6000); return () => clearTimeout(t); }, [msg]);
   const [tplId, setTplId] = useState(TEMPLATES[0].id);
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState('');
@@ -163,6 +163,9 @@ export default function PlanPage() {
     await Promise.all(next.map((ex, i) => supabase.from('plan_exercises').update({ sort_order: i }).eq('id', ex.id)));
   }
   async function removeExercise(id: string) {
+    const name = exercises.find(e => e.id === id)?.exercise_name ?? 'this exercise';
+    if (!confirm(`Remove ${name} from this workout? Sets you already logged stay in your History.`)) return;
+    setEditId('');
     await supabase.from('plan_exercises').delete().eq('id', id); await loadExercises(dayId);
   }
   async function removeDay(id: string) {
@@ -176,132 +179,188 @@ export default function PlanPage() {
   await loadPlans();
 }
 
+  const plan = plans.find(p => p.id === planId);
+  const day = days.find(d => d.id === dayId);
+  const numberFields = (vals: [string, string, (v: string) => void][]) => (
+    <div className="grid grid-cols-3 gap-2">
+      {vals.map(([label, value, set]) => (
+        <label key={label} className="min-w-0">
+          <span className={ui.label}>{label}</span>
+          <input type="number" inputMode="numeric" className={ui.input} value={value} onChange={e => set(e.target.value)} />
+        </label>
+      ))}
+    </div>
+  );
+
   return (
-    <main style={{ minHeight: '100vh', background: 'var(--fl-bg)', color: 'var(--fl-tx)', padding: '1rem', maxWidth: '600px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Your Plan</h1>
-      <Link href="/library" style={{ display: 'inline-block', marginBottom: '1rem', color: 'var(--fl-acc)' }}>Browse exercise library →</Link>
+    <main className={ui.main}>
+      <h1 className={ui.h1}>Your plan</h1>
 
-      {currentId && (
-        <div style={card}>
-          <h2 style={{ ...h2, marginBottom: '0.25rem' }}>Training days</h2>
-          <p style={{ color: 'var(--fl-tx2)', fontSize: '14px', marginBottom: '0.75rem' }}>
-            Your current plan is {plans.find(p => p.id === currentId)?.name}. Want to train more or fewer days? We&apos;ll build a new plan and keep everything you&apos;ve logged.
-          </p>
-          <Link href="/start?change=1" style={{ ...btn, display: 'block', textAlign: 'center', textDecoration: 'none' }}>Change training days</Link>
-        </div>
-      )}
-
-      <div style={card}>
-        <h2 style={h2}>Start from a template</h2>
-        <select value={tplId} onChange={e => setTplId(e.target.value)} style={{ ...input, marginBottom: '0.5rem' }}>
-          {TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <p style={{ color: 'var(--fl-tx2)', fontSize: '13px', marginBottom: '0.75rem' }}>{TEMPLATES.find(t => t.id === tplId)?.blurb}</p>
-        <button onClick={applyTemplate} disabled={busy} style={{ ...btn, opacity: busy ? 0.6 : 1 }}>{busy ? 'Adding...' : 'Use This Template'}</button>
-      </div>
-
-      <div style={card}>
-        <h2 style={h2}>Plan</h2>
-        {plans.length > 0 && (
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <select value={planId} onChange={e => setPlanId(e.target.value)} style={input}>
-              {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            {planId && <button onClick={renamePlan} style={{ ...btn, width: 'auto', background: 'var(--fl-s2)', color: 'var(--fl-tx)' }}>Rename</button>}
-            {planId && <button onClick={() => removePlan(planId)} style={{ ...btn, width: 'auto', background: 'var(--fl-s2)', color: 'var(--fl-bad)' }}>Delete</button>}
-          </div>
-        )}
-        {plans.length > 1 && planId && (planId === currentId
-          ? <p style={{ color: 'var(--fl-tx2)', fontSize: '13px', marginBottom: '0.75rem' }}>✓ This is your current plan. Home and Log follow it.</p>
-          : <button onClick={makeCurrent} style={{ ...btn, background: 'var(--fl-s2)', color: 'var(--fl-tx)', marginBottom: '0.75rem' }}>Make this my current plan</button>)}
-        <input style={{ ...input, marginBottom: '0.75rem' }} placeholder="New plan name (e.g. LURLPPR)" value={planName} onChange={e => setPlanName(e.target.value)} />
-        <button onClick={createPlan} style={btn}>Create New Plan</button>
-      </div>
-
-      {planId && (
-        <div style={card}>
-          <h2 style={h2}>Days</h2>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            {days.map(d => (
-              <button key={d.id} onClick={() => setDayId(d.id)} style={{ padding: '0.5rem 0.9rem', borderRadius: '999px', border: '1px solid var(--fl-line)', cursor: 'pointer', fontSize: '14px', background: d.id === dayId ? 'var(--fl-acc)' : 'var(--fl-s2)', color: d.id === dayId ? 'var(--fl-on-acc)' : 'var(--fl-tx)' }}>
-                {d.day_name}
-              </button>
-            ))}
-            {days.length === 0 && <p style={{ color: 'var(--fl-tx2)', fontSize: '14px' }}>No days yet.</p>}
-          </div>
-          <input style={{ ...input, marginBottom: '0.75rem' }} placeholder="New day (e.g. Tuesday - Upper)" value={dayName} onChange={e => setDayName(e.target.value)} />
-          <button onClick={addDay} style={btn}>Add Day</button>
-        </div>
-      )}
-
-      {dayId && (
-        <div style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <h2 style={{ ...h2, marginBottom: 0 }}>{days.find(d => d.id === dayId)?.day_name}</h2>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button onClick={renameDay} style={{ background: 'none', border: 'none', color: 'var(--fl-tx2)', cursor: 'pointer', fontSize: '13px' }}>Rename</button>
-              <button onClick={() => removeDay(dayId)} style={{ background: 'none', border: 'none', color: 'var(--fl-bad)', cursor: 'pointer', fontSize: '13px' }}>Delete day</button>
-            </div>
-          </div>
-
-          {exercises.map((ex, i) => (
-            <div key={ex.id} style={{ padding: '0.6rem 0', borderBottom: '1px solid var(--fl-line)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                <div onClick={() => (editId === ex.id ? setEditId('') : startEdit(ex))} style={{ cursor: 'pointer', minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '15px' }}>{ex.exercise_name}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--fl-tx2)' }}>{ex.target_sets} sets × {ex.rep_min}-{ex.rep_max} reps · tap to edit</div>
-                </div>
-                <button onClick={() => moveExercise(i, -1)} disabled={i === 0} aria-label="Move up" style={{ background: 'none', border: 'none', color: i === 0 ? 'var(--fl-line)' : 'var(--fl-tx2)', cursor: 'pointer', fontSize: '16px' }}>▲</button>
-                <button onClick={() => moveExercise(i, 1)} disabled={i === exercises.length - 1} aria-label="Move down" style={{ background: 'none', border: 'none', color: i === exercises.length - 1 ? 'var(--fl-line)' : 'var(--fl-tx2)', cursor: 'pointer', fontSize: '16px' }}>▼</button>
-                <button onClick={() => removeExercise(ex.id)} aria-label="Remove" style={{ background: 'none', border: 'none', color: 'var(--fl-tx2)', cursor: 'pointer', fontSize: '18px' }}>✕</button>
+      {plans.length === 0 ? (
+        <section className={`${ui.card} mt-5`}>
+          <h2 className={ui.h2}>No plan yet</h2>
+          <p className={`${ui.sub} mb-4 mt-1`}>Answer a few quick questions and we&apos;ll build one that fits your week. Or start from a template below.</p>
+          <Link href="/start" className={ui.primary}>Build my plan</Link>
+        </section>
+      ) : (
+        <>
+          {/* Which plan */}
+          <div className="mb-5 mt-1">
+            {plans.length > 1 ? (
+              <label className="mt-3 block">
+                <span className="sr-only">Plan</span>
+                <select value={planId} onChange={e => setPlanId(e.target.value)} className={ui.input}>
+                  {plans.map(p => <option key={p.id} value={p.id}>{p.name}{p.id === currentId ? ' (current)' : ''}</option>)}
+                </select>
+              </label>
+            ) : <p className="text-fl-tx2">{plan?.name}</p>}
+            {plans.length > 1 && planId && (planId === currentId
+              ? <p className="mt-2 flex items-center gap-1.5 text-sm text-fl-tx2"><Icon name="check" size={16} className="text-fl-ok" /> This is your current plan. Home and Log follow it.</p>
+              : <button onClick={makeCurrent} className={`${ui.secondary} mt-3`}>Make this my current plan</button>)}
+            {planId && (
+              <div className="-ml-2 mt-1 flex gap-1">
+                <button onClick={renamePlan} className={ui.textBtn}>Rename plan</button>
+                <button onClick={() => removePlan(planId)} className={ui.dangerText}>Delete plan</button>
               </div>
-              <HowTo key={ex.exercise_id ?? ex.exercise_name} name={ex.exercise_name} exerciseId={ex.exercise_id} info={ex.exercise_id ? undefined : null} compact />
-              {editId === ex.id && (
-                <div style={{ marginTop: '0.6rem' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    {[['Sets', editSets, setEditSets], ['Min reps', editMin, setEditMin], ['Max reps', editMax, setEditMax]].map(([label, value, set]) => (
-                      <div key={label as string} style={{ minWidth: 0 }}>
-                        <label style={{ display: 'block', color: 'var(--fl-tx2)', fontSize: '12px', marginBottom: '4px' }}>{label as string}</label>
-                        <input type="number" style={input} value={value as string} onChange={e => (set as (v: string) => void)(e.target.value)} />
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={saveEdit} style={btn}>Save</button>
-                  {repFor === ex.id ? (
-                    <div style={{ marginTop: '0.75rem' }}>
-                      <div style={{ color: 'var(--fl-tx2)', fontSize: '13px', marginBottom: '6px' }}>Replace {ex.exercise_name} with:</div>
-                      <ExercisePicker value={repName} onChange={setRepName} onPick={x => setRepId(x?.id ?? '')} />
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => replaceExercise(ex)} style={{ ...btn, background: 'var(--fl-acc)' }}>Replace</button>
-                        <button onClick={() => { setRepFor(''); setRepName(''); setRepId(''); }} style={{ ...btn, background: 'var(--fl-s2)', color: 'var(--fl-tx)' }}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button onClick={() => { setRepFor(ex.id); setRepName(''); setRepId(''); }} style={{ ...btn, background: 'var(--fl-s2)', color: 'var(--fl-tx)', marginTop: '0.5rem' }}>Replace this exercise</button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-          {exercises.length === 0 && <p style={{ color: 'var(--fl-tx2)', fontSize: '14px', marginBottom: '0.75rem' }}>No exercises yet.</p>}
-
-          <div style={{ marginTop: '1rem' }}>
-            <ExercisePicker value={exerciseName} onChange={setExerciseName} onPick={ex => setExerciseId(ex?.id ?? '')} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              {[['Sets', sets, setSets], ['Min reps', repMin, setRepMin], ['Max reps', repMax, setRepMax]].map(([label, value, set]) => (
-                <div key={label as string} style={{ minWidth: 0 }}>
-                  <label style={{ display: 'block', color: 'var(--fl-tx2)', fontSize: '12px', marginBottom: '4px' }}>{label as string}</label>
-                  <input type="number" style={input} value={value as string} onChange={e => (set as (v: string) => void)(e.target.value)} />
-                </div>
-              ))}
-            </div>
-            <button onClick={addExercise} style={btn}>Add Exercise</button>
+            )}
           </div>
-        </div>
+
+          {/* Workouts in the plan */}
+          {planId && (
+            <section className={ui.card}>
+              <h2 className={ui.h2}>Workouts</h2>
+              <p className={`${ui.sub} mb-3`}>They rotate in this order. Tap one to see or change its exercises.</p>
+              <div className="flex flex-wrap gap-2">
+                {days.map(d => (
+                  <button key={d.id} onClick={() => setDayId(d.id)} aria-pressed={d.id === dayId}
+                    className={`${ui.pill} ${d.id === dayId ? ui.pillOn : ui.pillOff}`}>{d.day_name}</button>
+                ))}
+                {days.length === 0 && <p className={ui.sub}>No workouts yet. Add one below.</p>}
+              </div>
+              <div className="mt-4 flex gap-2">
+                <label className="min-w-0 flex-1">
+                  <span className="sr-only">New workout name</span>
+                  <input className={ui.input} placeholder="New workout, e.g. Push" value={dayName} onChange={e => setDayName(e.target.value)} />
+                </label>
+                <button onClick={addDay} className={ui.secondaryInline}>Add</button>
+              </div>
+            </section>
+          )}
+
+          {/* The selected workout */}
+          {day && (
+            <section className={`${ui.card} mt-4`}>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xl font-bold">{day.day_name}</h2>
+                <div className="-mr-2 flex">
+                  <button onClick={renameDay} className={ui.textBtn}>Rename</button>
+                  <button onClick={() => removeDay(dayId)} className={ui.dangerText}>Remove</button>
+                </div>
+              </div>
+
+              <ul className="mt-2 divide-y divide-fl-line">
+                {exercises.map((ex, i) => (
+                  <li key={ex.id} className="py-3">
+                    <button onClick={() => (editId === ex.id ? setEditId('') : startEdit(ex))} aria-expanded={editId === ex.id}
+                      className="flex w-full items-center gap-3 py-1 text-left">
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">{ex.exercise_name}</span>
+                        <span className="block text-sm text-fl-tx2">{ex.target_sets} sets × {ex.rep_min}-{ex.rep_max} reps</span>
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold text-fl-tx2">{editId === ex.id ? 'Close' : 'Edit'}</span>
+                    </button>
+                    <HowTo key={ex.exercise_id ?? ex.exercise_name} name={ex.exercise_name} exerciseId={ex.exercise_id} info={ex.exercise_id ? undefined : null} compact />
+                    {editId === ex.id && (
+                      <div className="mt-3 space-y-2 rounded-xl bg-fl-s2/50 p-3">
+                        {numberFields([['Sets', editSets, setEditSets], ['Min reps', editMin, setEditMin], ['Max reps', editMax, setEditMax]])}
+                        <button onClick={saveEdit} className={ui.primary}>Save</button>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <button onClick={() => moveExercise(i, -1)} disabled={i === 0} className={ui.chip}><Icon name="up" size={16} /> Move up</button>
+                          <button onClick={() => moveExercise(i, 1)} disabled={i === exercises.length - 1} className={ui.chip}><Icon name="down" size={16} /> Move down</button>
+                          <button onClick={() => removeExercise(ex.id)} className={`${ui.chip} ml-auto text-fl-bad`}>Remove</button>
+                        </div>
+                        {repFor === ex.id ? (
+                          <div className="pt-2">
+                            <p className="mb-2 text-sm text-fl-tx2">Replace {ex.exercise_name} with:</p>
+                            <ExercisePicker value={repName} onChange={setRepName} onPick={x => setRepId(x?.id ?? '')} />
+                            <div className="flex gap-2">
+                              <button onClick={() => replaceExercise(ex)} className={ui.primary}>Replace</button>
+                              <button onClick={() => { setRepFor(''); setRepName(''); setRepId(''); }} className={ui.secondary}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => { setRepFor(ex.id); setRepName(''); setRepId(''); }} className={ui.secondary}>Replace this exercise</button>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {exercises.length === 0 && <p className={`${ui.sub} py-2`}>No exercises yet.</p>}
+
+              <div className="mt-4 space-y-2 border-t border-fl-line pt-4">
+                <h3 className="font-semibold">Add an exercise</h3>
+                <ExercisePicker value={exerciseName} onChange={setExerciseName} onPick={ex => setExerciseId(ex?.id ?? '')} />
+                {numberFields([['Sets', sets, setSets], ['Min reps', repMin, setRepMin], ['Max reps', repMax, setRepMax]])}
+                <button onClick={addExercise} className={ui.primary}>Add exercise</button>
+              </div>
+            </section>
+          )}
+        </>
       )}
 
-      {undo && <div style={{ background: 'var(--fl-s2)', borderRadius: '8px', padding: '1rem', color: 'var(--fl-acc)', fontSize: '14px', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}><span>{undo.label}</span><button onClick={undoReplace} style={{ background: 'none', border: '1px solid var(--fl-acc)', color: 'var(--fl-acc)', borderRadius: '8px', padding: '0.4rem 0.8rem', cursor: 'pointer', flexShrink: 0 }}>Undo</button></div>}
-      {message && <div style={{ background: 'var(--fl-s2)', borderRadius: '8px', padding: '1rem', color: 'var(--fl-ok)', fontSize: '14px' }}>{message}</div>}
+      {/* Changing plans: less frequent, so it sits below the plan itself */}
+      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-fl-tx2">Change your plan</h2>
+      <div className="space-y-4">
+        {currentId && (
+          <section className={ui.card}>
+            <h3 className={ui.h2}>Training days</h3>
+            <p className={`${ui.sub} mb-4 mt-1`}>
+              Your current plan is {plans.find(p => p.id === currentId)?.name}. Want to train more or fewer days? We&apos;ll build a new plan and keep everything you&apos;ve logged.
+            </p>
+            <Link href="/start?change=1" className={ui.secondary}>Change training days</Link>
+          </section>
+        )}
+
+        <section className={ui.card}>
+          <h3 className={ui.h2}>Start from a template</h3>
+          <label className="mt-3 block">
+            <span className="sr-only">Template</span>
+            <select value={tplId} onChange={e => setTplId(e.target.value)} className={ui.input}>
+              {TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </label>
+          <p className={`${ui.sub} mb-4 mt-2`}>{TEMPLATES.find(t => t.id === tplId)?.blurb}</p>
+          <button onClick={applyTemplate} disabled={busy} className={ui.secondary}>{busy ? 'Adding...' : 'Add this template'}</button>
+        </section>
+
+        <section className={ui.card}>
+          <h3 className={ui.h2}>Build a plan from scratch</h3>
+          <div className="mt-3 flex gap-2">
+            <label className="min-w-0 flex-1">
+              <span className="sr-only">New plan name</span>
+              <input className={ui.input} placeholder="Plan name, e.g. My split" value={planName} onChange={e => setPlanName(e.target.value)} />
+            </label>
+            <button onClick={createPlan} className={ui.secondaryInline}>Create</button>
+          </div>
+        </section>
+
+        <Link href="/library" className="flex h-12 items-center justify-center gap-1.5 font-semibold text-fl-acc">
+          Browse the exercise library <Icon name="arrowRight" size={18} />
+        </Link>
+      </div>
+
+      {(undo || msg) && (
+        <div className="fixed inset-x-4 bottom-[calc(88px+env(safe-area-inset-bottom))] z-[90] mx-auto max-w-xl space-y-2">
+          {undo && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-fl-line bg-fl-s1 p-3 text-sm shadow-lg">
+              <span>{undo.label}</span>
+              <button onClick={undoReplace} className="h-10 shrink-0 rounded-lg border border-fl-acc px-3 font-semibold text-fl-acc">Undo</button>
+            </div>
+          )}
+          <div className="shadow-lg"><Notice msg={msg} /></div>
+        </div>
+      )}
     </main>
   );
 }

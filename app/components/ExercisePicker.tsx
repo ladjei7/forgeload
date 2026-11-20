@@ -85,36 +85,36 @@ export default function ExercisePicker({
     setOpen(false);
   }
 
-  const rowStyle = { padding: '0.75rem', borderBottom: '1px solid var(--fl-line)', cursor: 'pointer' } as const;
+  const row = 'cursor-pointer border-b border-fl-line px-3 py-2.5 last:border-b-0 hover:bg-fl-s1';
   const section = (title: string, list: Result[]) => list.length > 0 && (
     <div key={title}>
-      <div style={{ padding: '0.5rem 0.75rem 0.25rem', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--fl-tx2)' }}>{title}</div>
+      <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-fl-tx2">{title}</div>
       {list.map(e => (
-        <div key={e.id} onMouseDown={() => choose(e)} style={rowStyle}>
-          <div style={{ fontSize: '15px' }}>{e.name}</div>
-          <div style={{ fontSize: '12px', color: 'var(--fl-tx2)' }}>{e.muscle_group} · {e.equipment}</div>
+        <div key={e.id} onMouseDown={() => choose(e)} className={row}>
+          <div className="font-medium">{e.name}</div>
+          <div className="text-xs text-fl-tx2">{e.muscle_group} · {e.equipment}</div>
         </div>
       ))}
     </div>
   );
 
   return (
-    <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
+    <div className="relative mb-3">
+      <div className="flex gap-2">
         <input
           type="text"
           aria-label="Search exercises"
-          placeholder="Search exercises (try bench, RDL, pendulum)"
+          placeholder="Search exercises"
           value={value}
           onChange={e => { onChange(e.target.value); onPick?.(null); setOpen(true); }}
           onFocus={openList}
           onBlur={() => setTimeout(() => { if (!showFiltersRef.current) setOpen(false); }, 150)}
-          style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--fl-line)', background: 'var(--fl-s2)', color: 'var(--fl-tx)', fontSize: '16px' }}
+          className="h-12 min-w-0 flex-1 rounded-xl border border-fl-field bg-fl-s2 px-3 text-base text-fl-tx"
         />
         <button
           type="button" aria-pressed={showFilters} aria-label="Filters"
           onClick={() => { setShowFilters(v => !v); setOpen(true); }}
-          style={{ padding: '0 0.9rem', borderRadius: '8px', border: '1px solid var(--fl-line)', background: (muscle || equip) ? 'var(--fl-acc)' : 'var(--fl-s2)', color: (muscle || equip) ? 'var(--fl-on-acc)' : 'var(--fl-tx)', fontSize: '14px', cursor: 'pointer' }}
+          className={`h-12 shrink-0 rounded-xl border px-4 text-sm font-semibold ${muscle || equip ? 'border-fl-acc bg-fl-tint text-fl-tx' : 'border-fl-field bg-fl-s2 text-fl-tx'}`}
         >
           Filters{muscle || equip ? ' •' : ''}
         </button>
@@ -122,30 +122,30 @@ export default function ExercisePicker({
       {open && (searching || showFilters || favorites.length > 0 || recents.length > 0) && (
         <div
           onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT') e.preventDefault(); }}
-          style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--fl-s2)', border: '1px solid var(--fl-line)', borderRadius: '8px', marginTop: '4px', zIndex: 50, overflow: 'hidden' }}
+          className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-fl-line bg-fl-s2 shadow-lg"
         >
           {showFilters && (
-            <div style={{ padding: '0.75rem 0.75rem 0', borderBottom: '1px solid var(--fl-line)' }}>
+            <div className="border-b border-fl-line px-3 pt-3">
               <ExerciseFilters muscle={muscle} equip={equip} onMuscle={setMuscle} onEquip={setEquip} />
             </div>
           )}
-          <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
-            {failed && <div style={{ padding: '0.75rem', color: 'var(--fl-bad)', fontSize: '13px' }}>Search is unavailable right now. You can still add this as a custom exercise.</div>}
+          <div className="max-h-60 overflow-y-auto">
+            {failed && <div className="p-3 text-sm text-fl-bad">Search is unavailable right now. You can still add this as a custom exercise.</div>}
             {!searching && <>{section('Favorites', favorites)}{section('Recent', recents)}</>}
             {searching && shown.map(e => (
-              <div key={e.id} onMouseDown={() => choose(e)} style={rowStyle}>
-                <div style={{ fontSize: '15px' }}>{e.name}{e.is_custom ? ' (yours)' : ''}</div>
-                <div style={{ fontSize: '12px', color: 'var(--fl-tx2)' }}>{e.muscle_group} · {e.equipment}</div>
+              <div key={e.id} onMouseDown={() => choose(e)} className={row}>
+                <div className="font-medium">{e.name}{e.is_custom ? ' (yours)' : ''}</div>
+                <div className="text-xs text-fl-tx2">{e.muscle_group} · {e.equipment}</div>
               </div>
             ))}
             {searching && !failed && shown.length === 0 && (
-              <div style={{ padding: '0.75rem', color: 'var(--fl-tx2)', fontSize: '13px' }}>
+              <div className="p-3 text-sm text-fl-tx2">
                 {muscle || equip ? 'No exercises match these filters. Try clearing one.' : 'No match yet.'}
               </div>
             )}
           </div>
           {q && !exact && (
-            <div onMouseDown={addCustom} style={{ padding: '0.75rem', color: 'var(--fl-acc)', cursor: 'pointer', fontSize: '14px', borderTop: '1px solid var(--fl-line)', background: 'var(--fl-s1)' }}>
+            <div onMouseDown={addCustom} className="cursor-pointer border-t border-fl-line bg-fl-s1 p-3 text-sm font-semibold text-fl-acc">
               {saving ? 'Adding...' : `+ Add "${q}" as a custom exercise`}
             </div>
           )}
