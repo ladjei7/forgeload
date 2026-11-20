@@ -524,7 +524,7 @@ export default function LogPage() {
   if (plans.length === 0 || days.length === 0) {
     return (
       <main className="mx-auto max-w-xl px-4 pt-6 text-fl-tx">
-        <h1 className="mb-4 text-3xl font-bold">Log</h1>
+        <h1 className="mb-4 text-3xl font-bold">Start a workout</h1>
         <div className={card}>
           <p className="mb-4 text-fl-tx2">{plans.length === 0 ? 'You do not have a plan yet.' : 'This plan has no workouts yet.'} Pick a template or build your own, then come back to log.</p>
           <Link href="/plan" className="flex h-12 items-center justify-center rounded-xl bg-fl-acc font-bold text-fl-on-acc">Go to Plan</Link>

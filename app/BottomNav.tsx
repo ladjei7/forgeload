@@ -8,14 +8,16 @@ const Icon = ({ d }: { d: string }) => (
 const TABS = [
   { href: '/', label: 'Home', d: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10' },
   { href: '/plan', label: 'Plan', d: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01' },
-  { href: '/log', label: 'Log', d: 'M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11' },
-  { href: '/history', label: 'History', d: 'M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+  { href: '/log', label: 'Train', d: 'M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11' },
+  { href: '/progress', label: 'Progress', d: 'M3 17l6-6 4 4 8-8M15 7h6v6' },
+  { href: '/library', label: 'Library', d: 'M4 19.5V5a2 2 0 012-2h14v14H6a2 2 0 00-2 2.5zM4 19.5A2 2 0 006 21h14v-4' },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
   if (pathname === '/login' || pathname === '/reset-password' || pathname === '/start' || pathname?.startsWith('/design-preview')) return null;
-  const on = (h: string) => (h === '/' ? pathname === '/' : pathname?.startsWith(h));
+  // History lives under Progress.
+  const on = (h: string) => (h === '/' ? pathname === '/' : h === '/progress' ? !!pathname?.match(/^\/(progress|history)/) : pathname?.startsWith(h));
   return (
     <nav aria-label="Main" className="fixed inset-x-3 bottom-0 z-[100] mx-auto mb-[calc(10px+env(safe-area-inset-bottom))] max-w-xl flex h-16 items-center justify-around rounded-[20px] border border-fl-line bg-fl-s1 p-1.5">
       {TABS.map(t => (

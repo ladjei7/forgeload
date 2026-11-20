@@ -176,7 +176,7 @@ export default function LibraryPage() {
   return (
     <main className="mx-auto max-w-xl px-4 pb-28 pt-4 text-fl-tx">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-3xl font-bold">Exercises</h1>
+        <h1 className="text-3xl font-bold">Library</h1>
         <button onClick={() => startNew()} className="h-11 rounded-xl bg-fl-acc px-4 font-bold text-fl-on-acc">+ New</button>
       </div>
 

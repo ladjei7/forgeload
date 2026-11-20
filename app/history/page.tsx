@@ -92,7 +92,8 @@ export default function HistoryPage() {
 
   return (
     <main className={ui.main}>
-      <h1 className={`${ui.h1} mb-5`}>History</h1>
+      <Link href="/progress" className="-ml-1 mb-1 inline-flex h-10 items-center gap-1 px-1 text-sm font-semibold text-fl-tx2"><span aria-hidden="true">←</span> Progress</Link>
+      <h1 className={`${ui.h1} mb-5`}>All workouts</h1>
 
       {loading && <p className="text-fl-tx2">Loading...</p>}
 
