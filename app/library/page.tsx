@@ -223,7 +223,7 @@ export default function LibraryPage() {
       )}
 
       <input
-        aria-label="Search exercises" placeholder="Search exercises (try RDL, lat pulldown, incline chest)"
+        aria-label="Search exercises" placeholder="Search exercises"
         value={q} onChange={e => setQ(e.target.value)} className={`${field} mb-3`}
       />
       <div className="mb-3 flex gap-2 overflow-x-auto [scrollbar-width:none]">

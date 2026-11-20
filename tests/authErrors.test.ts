@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { friendlyAuthError as f } from '../app/lib/authErrors.ts';
+import { friendlyAuthError as f, readRecoveryHash } from '../app/lib/authErrors.ts';
 
 test('the email rate limit gets a plain explanation', () => {
   assert.match(f({ message: 'email rate limit exceeded', code: 'over_email_send_rate_limit', status: 429 }), /try again in about an hour/);
@@ -20,4 +20,16 @@ test('common sign-in and sign-up problems', () => {
 test('unknown errors still say something and keep the detail', () => {
   assert.match(f({ message: 'weird' }), /weird/);
   assert.equal(f(null), '');
+});
+
+test('password reset: reusing the old password and an expired session get plain wording', () => {
+  assert.match(f({ message: 'New password should be different from the old password.', code: 'same_password', status: 422 }), /current password/);
+  assert.match(f({ message: 'Auth session missing!', code: 'session_not_found' }), /expired/);
+});
+test('reset link hash: recovery detected, expired or broken links explained, anything else ignored', () => {
+  assert.deepEqual(readRecoveryHash('#access_token=x&refresh_token=y&type=recovery'), { recovery: true, error: null });
+  assert.match(readRecoveryHash('#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid').error!, /expired or was already used/);
+  assert.match(readRecoveryHash('#error=server_error').error!, /did not work/);
+  assert.deepEqual(readRecoveryHash(''), { recovery: false, error: null });
+  assert.deepEqual(readRecoveryHash('#access_token=x&type=signup'), { recovery: false, error: null });
 });

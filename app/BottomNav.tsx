@@ -14,7 +14,7 @@ const TABS = [
 
 export default function BottomNav() {
   const pathname = usePathname();
-  if (pathname === '/login' || pathname === '/start' || pathname?.startsWith('/design-preview')) return null;
+  if (pathname === '/login' || pathname === '/reset-password' || pathname === '/start' || pathname?.startsWith('/design-preview')) return null;
   const on = (h: string) => (h === '/' ? pathname === '/' : pathname?.startsWith(h));
   return (
     <nav aria-label="Main" className="fixed inset-x-3 bottom-0 z-[100] mx-auto mb-[calc(10px+env(safe-area-inset-bottom))] max-w-xl flex h-16 items-center justify-around rounded-[20px] border border-fl-line bg-fl-s1 p-1.5">
