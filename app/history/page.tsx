@@ -33,37 +33,37 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadHistory();
-  }, []);
-
-  async function loadHistory() {
-    const { data } = await supabase
-      .from('workout_sessions')
-      .select(`
-        id,
-        session_date,
-        day_name,
-        workout_days ( day_name ),
-        exercise_logs (
+    let alive = true;
+    (async () => {
+      const { data } = await supabase
+        .from('workout_sessions')
+        .select(`
           id,
-          exercise_name,
-          target_sets,
-          target_rep_min,
-          target_rep_max,
-          exercise_sets (
-            set_number,
-            reps,
-            weight
+          session_date,
+          day_name,
+          workout_days ( day_name ),
+          exercise_logs (
+            id,
+            exercise_name,
+            target_sets,
+            target_rep_min,
+            target_rep_max,
+            exercise_sets (
+              set_number,
+              reps,
+              weight
+            )
           )
-        )
-      `)
-      .not('completed_at', 'is', null)
-      .order('completed_at', { ascending: false })
-      .limit(20);
-
-    if (data) setSessions(data as any);
-    setLoading(false);
-  }
+        `)
+        .not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false })
+        .limit(20);
+      if (!alive) return;
+      if (data) setSessions(data as unknown as Session[]);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   function totalVolume(sets: SetData[]) {
     return sets.reduce((sum, s) => sum + s.reps * s.weight, 0);

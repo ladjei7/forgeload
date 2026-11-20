@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import './preview.css';
 import { Icon } from './ui';
 import { SEED_HIST, SEED_PLAN, LIB, computeTarget, fmtW, libOf, estMinutes, totalSets, type Day, type PlanEx, type Target } from './data';
@@ -36,8 +36,8 @@ export default function Proto() {
   const sRef = useRef(s);
   const loaded = useRef(false);
   const [kb, setKb] = useState(false);
-  sRef.current = s;
-  netRef.current = s.net;
+  // Keep the latest state for timers and handlers, updated after each render (not during it).
+  useLayoutEffect(() => { sRef.current = s; netRef.current = s.net; });
 
   const lib = useMemo(() => [...LIB, ...s.custom], [s.custom]);
   const set = useCallback((p: Partial<State>) => setS((o) => ({ ...o, ...p })), []);
@@ -46,6 +46,8 @@ export default function Proto() {
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(KEY);
+      // Restoring from storage must wait until after the first render so it matches the server HTML.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time sync from sessionStorage after hydration
       if (raw) { const o = JSON.parse(raw) as State; setS({ ...seed(), ...o, sheet: null, toast: null }); }
     } catch { /* storage unavailable: run from seed */ }
     loaded.current = true;
@@ -90,6 +92,7 @@ export default function Proto() {
   useEffect(() => { // coming back online flushes the queue
     if (s.net === 'offline') return;
     s.workout?.sets.filter((x) => x.status === 'queued').forEach((x) => triggerSave(x.id));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to the simulated network coming back
     if (s.planSave === 'offline') { setS((o) => ({ ...o, planSave: 'saving' })); setTimeout(() => setS((o) => ({ ...o, planSave: 'saved' })), 700); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.net]);

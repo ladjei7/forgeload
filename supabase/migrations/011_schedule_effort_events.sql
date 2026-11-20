@@ -1,5 +1,5 @@
 -- 011_schedule_effort_events.sql
--- DRAFT. NOT APPLIED. Run on forgeload-dev first, then production only with explicit approval.
+-- Approved by the owner 2026-11-20. Applied to forgeload-dev first, then production.
 -- Additive only: new tables, new nullable columns, a widened check constraint. No row is changed or deleted.
 
 begin;
@@ -52,9 +52,12 @@ create policy "own rows" on public.plan_schedules for all
   with check ((select auth.uid()) = user_id and exists (select 1 from public.workout_plans p where p.id = plan_id and p.user_id = (select auth.uid())));
 create policy "own rows" on public.schedule_decisions for all
   using ((select auth.uid()) = user_id)
-  with check ((select auth.uid()) = user_id and exists (select 1 from public.workout_plans p where p.id = plan_id and p.user_id = (select auth.uid())));
+  with check ((select auth.uid()) = user_id
+    and exists (select 1 from public.workout_plans p where p.id = plan_id and p.user_id = (select auth.uid()))
+    and exists (select 1 from public.workout_days d where d.id = workout_day_id and d.plan_id = schedule_decisions.plan_id and d.user_id = (select auth.uid())));
 create index if not exists schedule_decisions_user_idx on public.schedule_decisions (user_id);
 create index if not exists plan_schedules_user_idx on public.plan_schedules (user_id);
+create index if not exists schedule_decisions_day_idx on public.schedule_decisions (workout_day_id);
 
 commit;
 

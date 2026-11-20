@@ -608,6 +608,8 @@ export default function LogPage() {
         );
       })()}
 
+      {/* The refs here are read only inside tap handlers (toggleSet), never while rendering. */}
+      {/* eslint-disable-next-line react-hooks/refs -- false positive: handlers, not render */}
       {exercises.map(ex => {
         if (focus && session && ex.id !== (focusId || currentEx || exercises[exercises.length - 1].id)) return null;
         const t = targets[ex.id];

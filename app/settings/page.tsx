@@ -28,8 +28,8 @@ export default function SettingsPage() {
 
   const [comfort, setComfort] = useState<Comfort | ''>('');
   const [prefMsg, setPrefMsg] = useState('');
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  useEffect(() => { try { if (localStorage.getItem('fl-theme') === 'light') setTheme('light'); } catch { /* optional */ } }, []);
+  // This page only renders in the browser (behind sign-in), so reading storage at first render is safe.
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => { try { return localStorage.getItem('fl-theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } });
   function pickTheme(t: 'dark' | 'light') {
     setTheme(t);
     try { localStorage.setItem('fl-theme', t); } catch { /* optional */ }

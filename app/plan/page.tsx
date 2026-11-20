@@ -8,6 +8,7 @@ import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
 import { logEvent } from '../lib/events';
 import { TEMPLATES } from '../lib/templates';
 import { createPlanFromTemplate } from '../lib/applyTemplate';
+import { applyComfort, type Comfort } from '../lib/comfort';
 import { ui, Icon, Notice } from '../components/ui';
 
 
@@ -46,8 +47,10 @@ export default function PlanPage() {
   const [undo, setUndo] = useState<{ rowId: string; name: string; id: string | null; label: string } | null>(null);
 
   useEffect(() => { loadPlans(); }, []);
-  useEffect(() => { if (planId) loadDays(planId); else { setDays([]); setDayId(''); } }, [planId]);
-  useEffect(() => { if (dayId) loadExercises(dayId); else setExercises([]); }, [dayId]);
+  // With no plan or no workout selected, those sections are hidden, so nothing needs resetting here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the loaders only call state setters
+  useEffect(() => { if (planId) void loadDays(planId); }, [planId]);
+  useEffect(() => { if (dayId) void loadExercises(dayId); }, [dayId]);
 
   async function loadPlans() {
   const { data } = await supabase.from('workout_plans').select('id, name, is_active').order('created_at');
@@ -101,11 +104,19 @@ export default function PlanPage() {
     const tpl = TEMPLATES.find(t => t.id === tplId);
     if (!tpl || busy) return;
     setBusy(true);
-    const res = await createPlanFromTemplate(tpl, { current: plans.length === 0 });
+    // Same rule as onboarding: start with the versions of each lift the person is comfortable with.
+    // No saved answer means "not sure": machines and dumbbells, barbells only when chosen.
+    let comfort: Comfort = 'unsure';
+    try {
+      const { data } = await supabase.from('user_training_prefs').select('comfort').maybeSingle();
+      const c = (data?.comfort ?? localStorage.getItem('fl-comfort')) as Comfort | null;
+      if (c === 'machines' || c === 'mixed' || c === 'all' || c === 'unsure') comfort = c;
+    } catch { /* keep the safe default */ }
+    const res = await createPlanFromTemplate(applyComfort(tpl, comfort).tpl, { current: plans.length === 0 });
     setBusy(false);
     if ('error' in res) return setMessage('Error: ' + res.error);
     await loadPlans(); setPlanId(res.planId);
-    setMessage(tpl.name + ' added. Rename days or swap exercises below to make it yours.' + (plans.length ? ' Your current plan is unchanged until you tap "Make this my current plan".' : ''));
+    setMessage(tpl.name + ' added' + (comfort === 'all' ? '' : ', using exercises that match your comfort setting') + '. Rename days or swap exercises below to make it yours.' + (plans.length ? ' Your current plan is unchanged until you tap "Make this my current plan".' : ''));
   }
   async function makeCurrent() {
     const ok = await setCurrentPlan(planId);

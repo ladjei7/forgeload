@@ -1,11 +1,24 @@
 'use client';
 // Free suggestion on Home: "You keep swapping A for B. Make B the default?" Optional, undoable, and nothing changes until the user taps Accept.
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { loadEvents, logEvent } from '../lib/events';
+import { pickCurrent, storedPlanId } from '../lib/currentPlan';
 import { swapSuggestions, type PlanRow, type SwapSuggestion } from '../lib/swapSuggestions';
 
-function lsGet(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
+// Looks for one suggestion on the current plan (the same plan Home and Log follow). Never throws.
+async function fetchSuggestion(): Promise<SwapSuggestion | null> {
+  try {
+    const { data: plans } = await supabase.from('workout_plans').select('id, name, is_active').order('created_at');
+    const plan = pickCurrent((plans ?? []) as { id: string; name: string; is_active: boolean | null }[], storedPlanId());
+    if (!plan) return null;
+    const { data: days } = await supabase.from('workout_days').select('id').eq('plan_id', plan.id);
+    const dayIds = ((days ?? []) as { id: string }[]).map(d => d.id); if (!dayIds.length) return null;
+    const { data: rows } = await supabase.from('plan_exercises').select('id, workout_day_id, exercise_id, exercise_name').in('workout_day_id', dayIds);
+    const events = await loadEvents(60);
+    return swapSuggestions(events, (rows ?? []) as PlanRow[])[0] ?? null;
+  } catch { return null; } // a suggestion is optional: never show an error for it
+}
 
 export default function SwapSuggestionCard() {
   const [sug, setSug] = useState<SwapSuggestion | null>(null);
@@ -13,19 +26,12 @@ export default function SwapSuggestionCard() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const load = useCallback(async () => {
-    try {
-      const { data: plans } = await supabase.from('workout_plans').select('id').order('created_at');
-      const ids = ((plans ?? []) as { id: string }[]).map(p => p.id); if (!ids.length) return setSug(null);
-      const planId = ids.includes(lsGet('fl-plan') ?? '') ? (lsGet('fl-plan') as string) : ids[ids.length - 1];
-      const { data: days } = await supabase.from('workout_days').select('id').eq('plan_id', planId);
-      const dayIds = ((days ?? []) as { id: string }[]).map(d => d.id); if (!dayIds.length) return setSug(null);
-      const { data: rows } = await supabase.from('plan_exercises').select('id, workout_day_id, exercise_id, exercise_name').in('workout_day_id', dayIds);
-      const events = await loadEvents(60);
-      setSug(swapSuggestions(events, (rows ?? []) as PlanRow[])[0] ?? null);
-    } catch { setSug(null); } // a suggestion is optional: never show an error for it
+  useEffect(() => {
+    let alive = true;
+    fetchSuggestion().then(x => { if (alive) setSug(x); });
+    return () => { alive = false; };
   }, []);
-  useEffect(() => { load(); }, [load]);
+  const load = async () => setSug(await fetchSuggestion());
 
   async function accept(s: SwapSuggestion) {
     if (busy) return; setBusy(true); setErr('');
