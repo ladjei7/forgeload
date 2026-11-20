@@ -85,3 +85,29 @@ test('a suggested schedule spreads workouts with rest days', () => {
   assert.deepEqual(s.slots.map(x => x.weekday), [0, 1, 3, 4]);
   assert.deepEqual(suggestSchedule(['A', 'B', 'C']).slots.map(x => x.weekday), [0, 2, 4]);
 });
+
+import { chooseNext, daysLeftInWeek, localDate } from '../app/lib/schedule.ts';
+const wk = { mode: 'weekly' as const, weekStart: 0, slots: [{ weekday: 0, dayId: 'UA' }, { weekday: 1, dayId: 'LA' }, { weekday: 3, dayId: 'UB' }, { weekday: 4, dayId: 'LB' }], since: '2026-11-01' };
+// 2026-11-16 is a Monday.
+test('chooseNext: rotation mode just follows the rotation', () => {
+  assert.deepEqual(chooseNext({ sch: { ...wk, mode: 'rotation' }, today: '2026-11-18', done: [], decisions: [], rotationNext: 'UB' }), { dayId: 'UB', why: 'rotation' });
+});
+test('chooseNext: weekly mode shows today\'s planned workout, then nothing once it is done', () => {
+  assert.deepEqual(chooseNext({ sch: wk, today: '2026-11-17', done: [], decisions: [], rotationNext: 'UA' }), { dayId: 'LA', why: 'planned' });
+  const after = chooseNext({ sch: wk, today: '2026-11-17', done: [{ dayId: 'LA', date: '2026-11-17' }], decisions: [], rotationNext: 'UB' });
+  assert.equal(after.why, 'rest'); assert.equal(after.dayId, 'UB'); assert.equal(after.nextPlanned?.date, '2026-11-19');
+});
+test('chooseNext: a workout moved to today comes first', () => {
+  const r = chooseNext({ sch: wk, today: '2026-11-18', done: [], decisions: [{ date: '2026-11-17', dayId: 'LA', action: 'rescheduled', to: '2026-11-18' }], rotationNext: 'UB' });
+  assert.deepEqual(r, { dayId: 'LA', why: 'moved' });
+});
+test('chooseNext: rest day pulls the next planned workout forward; falls back to the rotation late in the week', () => {
+  const wed = chooseNext({ sch: wk, today: '2026-11-18', done: [{ dayId: 'UA', date: '2026-11-16' }, { dayId: 'LA', date: '2026-11-17' }], decisions: [], rotationNext: 'UB' });
+  assert.deepEqual([wed.why, wed.dayId, wed.nextPlanned?.dayId], ['rest', 'UB', 'UB']);
+  const sat = chooseNext({ sch: wk, today: '2026-11-21', done: [], decisions: [], rotationNext: 'UA' });
+  assert.deepEqual([sat.why, sat.dayId, sat.nextPlanned], ['rest', 'UA', undefined]);
+});
+test('daysLeftInWeek and localDate', () => {
+  assert.deepEqual(daysLeftInWeek('2026-11-20'), ['2026-11-20', '2026-11-21', '2026-11-22']);
+  assert.equal(localDate(new Date(2026, 10, 5, 23, 30)), '2026-11-05');
+});

@@ -3,7 +3,7 @@
 import { supabase } from './supabase';
 import type { EventRow } from './swapSuggestions';
 
-export async function logEvent(kind: 'swap' | 'skip' | 'feel' | 'suggestion', payload: Record<string, unknown>): Promise<void> {
+export async function logEvent(kind: 'swap' | 'skip' | 'feel' | 'suggestion' | 'schedule_prompt', payload: Record<string, unknown>): Promise<void> {
   try {
     const { data } = await supabase.auth.getUser();
     if (!data.user) return;

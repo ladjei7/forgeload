@@ -116,3 +116,40 @@ export function suggestSchedule(dayIds: string[], weekStart = 0): Schedule {
   const days = patterns[n] ?? [];
   return { mode: 'weekly', weekStart, slots: days.map((w, i) => ({ weekday: (w + weekStart) % 7, dayId: dayIds[i] })) };
 }
+
+// ---- What's next (shared by Home and the workout screen so they always agree) ----
+export type NextPick = {
+  dayId: string | null;
+  why: 'rotation' | 'planned' | 'moved' | 'rest';
+  /** On a rest day: the next planned workout later this week, if any. */
+  nextPlanned?: Occurrence;
+};
+
+/**
+ * Rotation mode: the rotation decides. Weekly mode: a workout the user moved to today, then today's
+ * planned workout, otherwise it is a rest day and "train anyway" pulls the next planned workout forward
+ * (or the rotation, if nothing else is planned this week).
+ */
+export function chooseNext(p: { sch: Schedule; today: string; done: Completion[]; decisions: Decision[]; rotationNext: string | null }): NextPick {
+  if (p.sch.mode !== 'weekly') return { dayId: p.rotationNext, why: 'rotation' };
+  const doneToday = (dayId: string) => p.done.some(c => c.date === p.today && c.dayId === dayId);
+  const moved = p.decisions.find(d => d.action === 'rescheduled' && d.to === p.today && !doneToday(d.dayId));
+  if (moved) return { dayId: moved.dayId, why: 'moved' };
+  const planned = plannedToday(p.sch, p.today, p.done);
+  if (planned) return { dayId: planned, why: 'planned' };
+  const doneThisWeek = p.done.filter(c => sameWeek(c.date, p.today, p.sch.weekStart)).map(c => c.dayId);
+  const nextPlanned = occurrencesForWeek(p.sch, p.today).find(o => o.date > p.today && !doneThisWeek.includes(o.dayId));
+  return { dayId: nextPlanned?.dayId ?? p.rotationNext, why: 'rest', nextPlanned };
+}
+
+/** Days left in this training week, today included (for "Move it to another day"). */
+export function daysLeftInWeek(today: string, weekStart = 0): string[] {
+  const start = weekStartOf(today, weekStart); const out: string[] = [];
+  for (let i = 0; i < 7; i++) { const d = addDays(start, i); if (d >= today) out.push(d); }
+  return out;
+}
+
+/** Local calendar date (YYYY-MM-DD) of a timestamp, in the device's time zone. */
+export function localDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}

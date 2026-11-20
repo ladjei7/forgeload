@@ -4,6 +4,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from './lib/supabase';
 import { nextDayId } from './lib/rotation';
+import { chooseNext, homePrompt, localDate, type NextPick, type HomePrompt } from './lib/schedule';
+import { loadScheduleState } from './lib/scheduleData';
+import SchedulePrompt from './components/SchedulePrompt';
 import { pickCurrent } from './lib/pickCurrent';
 import SwapSuggestionCard from './components/SwapSuggestionCard';
 import { summarize, weekDots, todayIndex, estimateMinutes, rotationPosition, type ExSummary, type HistEntry, type PlanExLite } from './lib/homeSummary';
@@ -19,6 +22,8 @@ type Home = {
   weekCount: number;
   total: number;
   recent: Recent[];
+  /** Weekly schedule state (rotation mode: pick.why === 'rotation' and no prompt). */
+  sched: { planId: string; today: string; pick: NextPick; prompt: HomePrompt; names: Record<string, string> } | null;
 };
 
 const one = <T,>(x: T | T[] | null | undefined): T | null => (Array.isArray(x) ? x[0] ?? null : x ?? null);
@@ -31,6 +36,7 @@ export default function HomePage() {
   const [data, setData] = useState<Home | null>(null);
   const [error, setError] = useState('');
   const [email, setEmail] = useState('');
+  const [reloadKey, setReloadKey] = useState(0); // bumped after answering a schedule prompt
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: s }) => setEmail(s.session?.user.email ?? ''));
@@ -38,7 +44,7 @@ export default function HomePage() {
       try {
         const { data: plans } = await supabase.from('workout_plans').select('id, name, is_active').order('created_at');
         const planList = (plans ?? []) as { id: string; name: string; is_active: boolean | null }[];
-        const h: Home = { planCount: planList.length, planName: '', active: null, next: null, emptyPlan: false, weekCount: 0, total: 0, recent: [], dots: Array(7).fill(false) };
+        const h: Home = { planCount: planList.length, planName: '', active: null, next: null, emptyPlan: false, weekCount: 0, total: 0, recent: [], dots: Array(7).fill(false), sched: null };
 
         // An unfinished workout always comes first.
         const { data: act } = await supabase
@@ -66,7 +72,16 @@ export default function HomePage() {
               byDay.set(r.workout_day_id, [...(byDay.get(r.workout_day_id) ?? []), { name: r.exercise_name, exerciseId: r.exercise_id, sets: r.target_sets, repMin: r.rep_min, repMax: r.rep_max }]);
             }
             const lastId = (last?.[0] as { workout_day_id: string } | undefined)?.workout_day_id ?? null;
-            const nextId = nextDayId(dayList, lastId, id => byDay.has(id));
+            let nextId = nextDayId(dayList, lastId, id => byDay.has(id));
+            // Weekly schedule, if the user turned it on: planned or moved workouts come first.
+            try {
+              const st = await loadScheduleState(plan.id, ids);
+              const today = localDate(new Date());
+              const pick = chooseNext({ ...st, today, rotationNext: nextId });
+              if (pick.dayId && byDay.has(pick.dayId)) nextId = pick.dayId;
+              const prompt = homePrompt({ ...st, today, activeSessionId: h.active ? 'active' : null, promptedKeys: [] });
+              h.sched = { planId: plan.id, today, pick, prompt, names: Object.fromEntries(dayList.map(d => [d.id, d.day_name])) };
+            } catch { /* the rotation still works without the schedule */ }
             const next = dayList.find(d => d.id === nextId);
             if (next && byDay.has(next.id)) {
               const planEx = byDay.get(next.id) ?? [];
@@ -108,7 +123,7 @@ export default function HomePage() {
         setError('Could not load your home screen. Check your connection and refresh.');
       }
     })();
-  }, []);
+  }, [reloadKey]);
 
   const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
@@ -136,7 +151,7 @@ export default function HomePage() {
           ) : data.planCount === 0 ? (
             <section className={card}>
               <h2 className="mb-1 text-2xl font-bold">Start with a plan</h2>
-              <p className="mb-4 text-fl-tx2">Answer two quick questions and get a plan that fits your week.</p>
+              <p className="mb-4 text-fl-tx2">Answer a few quick questions and get a plan that fits your week.</p>
               <Link href="/start" className={primary}>Set up my plan</Link>
               <Link href="/plan" className="mt-3 block text-center text-sm text-fl-tx2 underline-offset-2 hover:underline">Or build it yourself</Link>
             </section>
@@ -147,6 +162,12 @@ export default function HomePage() {
               <Link href="/plan" className={primary}>Add exercises</Link>
             </section>
           ) : data.next ? (
+            <>
+            {data.sched && data.sched.prompt.kind !== 'none' && data.sched.prompt.kind !== 'resume' && (
+              <SchedulePrompt prompt={data.sched.prompt} planId={data.sched.planId} today={data.sched.today}
+                names={data.sched.names} todayPlanned={data.sched.pick.why === 'planned' ? data.sched.pick.dayId : null}
+                onAnswered={() => setReloadKey(k => k + 1)} />
+            )}
             <section className={card} aria-label="Next workout">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs uppercase tracking-wide text-fl-tx2">Up next · {data.planName}</div>
@@ -154,7 +175,13 @@ export default function HomePage() {
               </div>
               <h2 className="mt-1 text-2xl font-bold">{data.next.dayName}</h2>
               <p className="mb-3 text-sm text-fl-tx2">
-                {data.next.pos ? `Workout ${data.next.pos.n} of ${data.next.pos.of} in your rotation` : ''}{data.next.pos && data.next.minutes ? ' · ' : ''}{data.next.minutes ? `about ${data.next.minutes} min` : ''}
+                {(() => {
+                  const s = data.sched?.pick;
+                  const when = s?.why === 'planned' ? 'Planned for today' : s?.why === 'moved' ? 'Moved to today'
+                    : s?.why === 'rest' ? `Rest day today${s.nextPlanned ? `. Next planned: ${new Date(s.nextPlanned.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' })}` : ''}`
+                    : data.next.pos ? `Workout ${data.next.pos.n} of ${data.next.pos.of} in your rotation` : '';
+                  return [when, data.next.minutes ? `about ${data.next.minutes} min` : ''].filter(Boolean).join(' · ');
+                })()}
               </p>
               <ul className="mb-4 divide-y divide-fl-line">
                 {data.next.exercises.slice(0, 6).map(e => (
@@ -182,9 +209,10 @@ export default function HomePage() {
                   First time through: pick a weight you can lift for the rep range with a rep or two left in the tank. Forgeload remembers it, then shows what you did last time and a target next time.
                 </p>
               )}
-              <Link href="/log" className={primary}>Start workout</Link>
+              <Link href="/log" className={primary}>{data.sched?.pick.why === 'rest' ? 'Train anyway' : 'Start workout'}</Link>
               <p className="mt-3 text-center text-xs text-fl-tx2">You can pick a different workout on the next screen.</p>
             </section>
+            </>
           ) : null}
 
           {!data.active && data.planCount > 0 && <SwapSuggestionCard />}

@@ -36,9 +36,27 @@ export default function SettingsPage() {
     if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); else document.documentElement.removeAttribute('data-theme');
   }
 
+  const [askEffort, setAskEffort] = useState(true);
+  const [trackRir, setTrackRir] = useState(false);
+  const [effortMsg, setEffortMsg] = useState('');
   useEffect(() => {
-    supabase.from('user_training_prefs').select('comfort').maybeSingle().then(({ data }) => { if (data?.comfort) setComfort(data.comfort as Comfort); });
+    supabase.from('user_training_prefs').select('comfort, ask_effort, track_rir').maybeSingle().then(({ data }) => {
+      if (data?.comfort) setComfort(data.comfort as Comfort);
+      if (data) { setAskEffort(data.ask_effort !== false); setTrackRir(data.track_rir === true); }
+    });
   }, []);
+
+  async function saveEffort(patch: { ask_effort?: boolean; track_rir?: boolean }) {
+    const before = { askEffort, trackRir };
+    if (patch.ask_effort !== undefined) setAskEffort(patch.ask_effort);
+    if (patch.track_rir !== undefined) setTrackRir(patch.track_rir);
+    setEffortMsg('');
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return;
+    const { error } = await supabase.from('user_training_prefs').upsert({ user_id: u.user.id, ...patch, updated_at: new Date().toISOString() });
+    if (error) { setAskEffort(before.askEffort); setTrackRir(before.trackRir); return setErr('Could not save that setting. Check your connection and try again.'); }
+    setEffortMsg('Saved. Applies from your next exercise.');
+  }
 
   async function saveComfort(c: Comfort) {
     const prev = comfort; setComfort(c); setPrefMsg('');
@@ -91,6 +109,23 @@ export default function SettingsPage() {
         <h2 className="mb-1 text-lg font-bold">Training days</h2>
         <p className="mb-3 text-sm text-fl-tx2">Want to train more or fewer days a week? We&apos;ll build a new plan to match. Your old plan and everything you&apos;ve logged are kept.</p>
         <Link href="/start?change=1" className="flex h-12 items-center justify-center rounded-xl bg-fl-s2 font-semibold">Change training days</Link>
+      </section>
+
+      <section className={card}>
+        <h2 className="mb-1 text-lg font-bold">Effort</h2>
+        <p className="mb-3 text-sm text-fl-tx2">Optional ways to note how hard training felt. You can always skip them.</p>
+        {([
+          ['ask', askEffort, 'Ask how hard it felt', 'One tap after your first and last exercise: Easy, Manageable, Very hard or Not sure.', () => saveEffort({ ask_effort: !askEffort })],
+          ['rir', trackRir, 'Track reps in reserve (RIR)', 'Adds an optional box to each set: how many more clean reps you could have done. 0 = none left. For experienced lifters.', () => saveEffort({ track_rir: !trackRir })],
+        ] as const).map(([id, on, title, sub, toggle]) => (
+          <button key={id} role="switch" aria-checked={on} onClick={toggle} className="flex w-full items-center gap-3 rounded-xl py-2 text-left">
+            <span className="min-w-0 flex-1"><span className="block font-semibold">{title}</span><span className="block text-sm text-fl-tx2">{sub}</span></span>
+            <span aria-hidden="true" className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${on ? 'bg-fl-acc' : 'bg-fl-s2 border border-fl-field'}`}>
+              <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
+            </span>
+          </button>
+        ))}
+        {effortMsg && <p role="status" className="mt-2 text-sm text-fl-ok">{effortMsg}</p>}
       </section>
 
       <section className={card}>

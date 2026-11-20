@@ -11,13 +11,15 @@ export type LogPayload = {
   id: string; workout_session_id: string; exercise_name: string; exercise_id: string | null;
   target_sets: number; target_rep_min: number; target_rep_max: number;
 };
-export type SetPayload = { id: string; exercise_log_id: string; set_number: number; reps: number; weight: number; completed: true };
+export type SetPayload = { id: string; exercise_log_id: string; set_number: number; reps: number; weight: number; completed: true; rir?: number | null };
+export type Effort = 'easy' | 'manageable' | 'very_hard' | 'unsure';
 
 type Base = { opId: string; sessionId: string; at: number; failed?: string };
 export type Op =
   | (Base & { kind: 'log'; payload: LogPayload })
   | (Base & { kind: 'set'; peId: string; idx: number; payload: SetPayload })
-  | (Base & { kind: 'del'; peId: string; idx: number; setId: string });
+  | (Base & { kind: 'del'; peId: string; idx: number; setId: string })
+  | (Base & { kind: 'effort'; logId: string; effort: Effort | null });
 
 export type Outcome = 'ok' | 'transient' | 'permanent';
 export type Store = { get(): string | null; set(v: string): void };
@@ -32,6 +34,8 @@ export function save(store: Store, ops: Op[]): boolean {
 /** Add an op, collapsing ones it makes pointless. Never drops a write the server has not confirmed unless it is superseded. */
 export function enqueue(ops: Op[], op: Op): Op[] {
   if (op.kind === 'log') return ops.some(o => o.kind === 'log' && o.payload.id === op.payload.id) ? ops : [...ops, op];
+  // A newer effort answer for the same exercise replaces the pending one.
+  if (op.kind === 'effort') return [...ops.filter(o => !(o.kind === 'effort' && o.logId === op.logId)), op];
   const setId = op.kind === 'set' ? op.payload.id : op.setId;
   // A newer edit or delete of the same set replaces older pending ones for it.
   const kept = ops.filter(o => !((o.kind === 'set' && o.payload.id === setId) || (o.kind === 'del' && o.setId === setId)));
@@ -59,6 +63,7 @@ export async function flush(ops: Op[], send: (op: Op) => Promise<Outcome>, opts:
     if (op.failed && !opts.retryFailed) { remaining.push(op); if (op.kind === 'log') failedLogs.add(op.payload.id); continue; }
     // A set whose log could not be created would only fail too; keep it waiting.
     if (op.kind === 'set' && failedLogs.has(op.payload.exercise_log_id)) { remaining.push(op); continue; }
+    if (op.kind === 'effort' && failedLogs.has(op.logId)) { remaining.push(op); continue; }
     let r: Outcome;
     try { r = await send(op); } catch { r = 'transient'; }
     if (r === 'ok') confirmed.push(op);
@@ -73,14 +78,16 @@ export const withoutSession = (ops: Op[], sessionId: string) => ops.filter(o => 
 
 /** What the device knows about a set that the server may not: pending ('local'), rejected ('failed'), or deleted. */
 export function overlay(ops: Op[], sessionId: string):
-  { sets: { peId: string; idx: number; payload: SetPayload; failed: boolean }[]; deleted: Set<string>; logIds: Record<string, string> } {
+  { sets: { peId: string; idx: number; payload: SetPayload; failed: boolean }[]; deleted: Set<string>; logIds: Record<string, string>; efforts: Record<string, Effort | null> } {
   const sets: { peId: string; idx: number; payload: SetPayload; failed: boolean }[] = []; const deleted = new Set<string>(); const logIds: Record<string, string> = {};
+  const efforts: Record<string, Effort | null> = {};
   for (const o of forSession(ops, sessionId)) {
     if (o.kind === 'set') sets.push({ peId: o.peId, idx: o.idx, payload: o.payload, failed: !!o.failed });
     else if (o.kind === 'del') deleted.add(o.setId);
+    else if (o.kind === 'effort') efforts[o.logId] = o.effort;
     else logIds[o.payload.exercise_name] = o.payload.id;
   }
-  return { sets, deleted, logIds };
+  return { sets, deleted, logIds, efforts };
 }
 
 export const newId = (): string =>

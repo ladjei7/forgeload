@@ -8,16 +8,26 @@ import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 import { suggestTarget, defaultRestSeconds, type PrevSet } from '../lib/progression';
 import { nextDayId } from '../lib/rotation';
+import { chooseNext, localDate } from '../lib/schedule';
+import { loadScheduleState } from '../lib/scheduleData';
 import { pickCurrent, setCurrentPlan } from '../lib/currentPlan';
 import { localDateString } from '../lib/dates';
-import { newId, overlay, forSession, type Op } from '../lib/outbox';
+import { newId, overlay, forSession, type Op, type Effort } from '../lib/outbox';
 import { ensureInit, getState, subscribe, addOp, dropSession, syncNow } from '../lib/outboxSync';
 
 type Plan = { id: string; name: string; is_active?: boolean | null };
 type Day = { id: string; day_name: string; sort_order: number };
 type PlanEx = { id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number };
 // state: 'local' = stored on this device, not yet confirmed by the server; 'failed' = the server rejected it; undefined = saved to the account.
-type SetRow = { weight: string; reps: string; done: boolean; setId?: string; state?: 'local' | 'failed' };
+type SetRow = { weight: string; reps: string; done: boolean; setId?: string; state?: 'local' | 'failed'; rir?: string };
+/** RIR box: blank means not recorded; anything else is clamped to 0-10. */
+const rirValue = (v?: string) => { if (!v) return null; const n = parseInt(v, 10); return Number.isFinite(n) ? Math.min(10, Math.max(0, n)) : null; };
+const EFFORTS: { id: Effort; title: string; sub: string }[] = [
+  { id: 'easy', title: 'Easy', sub: 'I could have done many more reps' },
+  { id: 'manageable', title: 'Manageable', sub: 'Challenging but controlled' },
+  { id: 'very_hard', title: 'Very hard', sub: 'Close to my limit' },
+  { id: 'unsure', title: 'Not sure', sub: '' },
+];
 type Rest = { end: number; total: number; paused?: number };
 type Session = { id: string; workout_day_id: string; started_at: string };
 type Prev = { sets: PrevSet[] };
@@ -64,6 +74,11 @@ export default function LogPage() {
   const [rows, setRows] = useState<Record<string, SetRow[]>>({});
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  // Effort: plain-language question (on by default) and optional reps in reserve (off by default).
+  const [askEffort, setAskEffort] = useState(true);
+  const [trackRir, setTrackRir] = useState(false);
+  const [efforts, setEfforts] = useState<Record<string, Effort | null>>({}); // by exercise name, this workout
+  const [effortOpen, setEffortOpen] = useState<Record<string, boolean>>({}); // re-opened to change, or skipped (false)
   const [summary, setSummary] = useState<Summary | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [rest, setRest] = useState<Rest | null>(null);
@@ -153,14 +168,16 @@ export default function LogPage() {
     setBestWeight(best);
 
     // Rows: empty rows for the plan, filled in from any sets already saved in this session.
-    const saved: Record<string, Record<number, { id: string; reps: number; weight: number }>> = {};
+    const saved: Record<string, Record<number, { id: string; reps: number; weight: number; rir: number | null }>> = {};
+    const eff: Record<string, Effort | null> = {};
     logIds.current = {};
     if (activeSession) {
       const { data: logs } = await supabase
-        .from('exercise_logs').select('id, exercise_name, exercise_sets(id, set_number, reps, weight)')
+        .from('exercise_logs').select('id, exercise_name, effort, exercise_sets(id, set_number, reps, weight, rir)')
         .eq('workout_session_id', activeSession.id);
-      for (const l of (logs ?? []) as unknown as { id: string; exercise_name: string; exercise_sets: { id: string; set_number: number; reps: number; weight: number }[] | null }[]) {
+      for (const l of (logs ?? []) as unknown as { id: string; exercise_name: string; effort: Effort | null; exercise_sets: { id: string; set_number: number; reps: number; weight: number; rir: number | null }[] | null }[]) {
         logIds.current[l.exercise_name] = l.id;
+        if (l.effort) eff[l.exercise_name] = l.effort;
         saved[l.exercise_name] = {};
         for (const s of l.exercise_sets ?? []) saved[l.exercise_name][s.set_number] = s;
       }
@@ -173,7 +190,7 @@ export default function LogPage() {
       const count = Math.max(ex.target_sets, ...Object.keys(have).map(Number), 0);
       next[ex.id] = Array.from({ length: count }, (_, i) => {
         const s = have[i + 1];
-        if (s) return { weight: String(s.weight), reps: String(s.reps), done: true, setId: s.id };
+        if (s) return { weight: String(s.weight), reps: String(s.reps), done: true, setId: s.id, rir: s.rir != null ? String(s.rir) : '' };
         const d = drafts[ex.id]?.[i];
         return { weight: d?.weight ?? '', reps: d?.reps ?? '', done: false };
       });
@@ -187,9 +204,13 @@ export default function LogPage() {
       for (const p of o.sets) {
         const list = next[p.peId]; if (!list) continue;
         while (list.length <= p.idx) list.push({ weight: '', reps: '', done: false });
-        list[p.idx] = { weight: String(p.payload.weight), reps: String(p.payload.reps), done: true, setId: p.payload.id, state: p.failed ? 'failed' : 'local' };
+        list[p.idx] = { weight: String(p.payload.weight), reps: String(p.payload.reps), done: true, setId: p.payload.id, state: p.failed ? 'failed' : 'local', rir: p.payload.rir != null ? String(p.payload.rir) : '' };
       }
+      // Effort answers still waiting to sync.
+      const nameById = Object.fromEntries(Object.entries({ ...logIds.current, ...o.logIds }).map(([n, id]) => [id, n]));
+      for (const [logId, e] of Object.entries(o.efforts)) if (nameById[logId]) eff[nameById[logId]] = e;
     }
+    setEfforts(eff);
     setRows(next);
   }, []);
 
@@ -215,7 +236,13 @@ export default function LogPage() {
       withExercises = new Set((exDays ?? []).map(r => (r as { workout_day_id: string }).workout_day_id));
     }
     setEmptyDays(list.filter(d => !withExercises.has(d.id)).map(d => d.id));
-    const suggested = nextDayId(list, last, id => withExercises.has(id)) ?? '';
+    let suggested = nextDayId(list, last, id => withExercises.has(id)) ?? '';
+    // Weekly schedule (if on): the same pick Home shows, e.g. today's planned workout.
+    try {
+      const st = await loadScheduleState(pid, list.map(d => d.id));
+      const pick = chooseNext({ ...st, today: localDate(new Date()), rotationNext: suggested || null });
+      if (pick.dayId && withExercises.has(pick.dayId)) suggested = pick.dayId;
+    } catch { /* the rotation still works without the schedule */ }
     setSuggestedDayId(suggested);
     const chosen = preferDay ?? suggested;
     setDayId(chosen);
@@ -226,7 +253,12 @@ export default function LogPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { data: pData } = await supabase.from('workout_plans').select('id, name, is_active').order('created_at');
+        const [{ data: pData }, { data: prefs }] = await Promise.all([
+          supabase.from('workout_plans').select('id, name, is_active').order('created_at'),
+          supabase.from('user_training_prefs').select('ask_effort, track_rir').maybeSingle(),
+        ]);
+        const p = prefs as { ask_effort: boolean | null; track_rir: boolean | null } | null;
+        if (p) { setAskEffort(p.ask_effort !== false); setTrackRir(p.track_rir === true); }
         const planList = (pData ?? []) as Plan[];
         setPlans(planList);
         const savedRest = lsGet(LS.rest);
@@ -414,9 +446,19 @@ export default function LogPage() {
     const logId = logIdFor(ex);
     const setId = row.setId ?? newId();
     addOp({ opId: newId(), kind: 'set', sessionId: session.id, at: t0, peId: ex.id, idx: i,
-      payload: { id: setId, exercise_log_id: logId, set_number: i + 1, reps, weight, completed: true } });
+      payload: { id: setId, exercise_log_id: logId, set_number: i + 1, reps, weight, completed: true, ...(trackRir ? { rir: rirValue(row.rir) } : {}) } });
     setRow(ex.id, i, { weight: String(weight), reps: String(reps), done: true, setId, state: 'local' });
     startRest(defaultRestSeconds(ex.rep_max));
+    void syncNow();
+  }
+
+  /** Save the plain-language effort answer for this exercise (queued like a set, so it survives no signal). */
+  function answerEffort(ex: PlanEx, e: Effort) {
+    if (!session) return;
+    const logId = logIdFor(ex);
+    addOp({ opId: newId(), kind: 'effort', sessionId: session.id, at: clockNow(), logId, effort: e });
+    setEfforts(m => ({ ...m, [ex.exercise_name]: e }));
+    setEffortOpen(m => ({ ...m, [ex.exercise_name]: false }));
     void syncNow();
   }
 
@@ -496,6 +538,34 @@ export default function LogPage() {
 
   const card = 'rounded-2xl bg-fl-s1 border border-fl-line p-4';
   const inputCls = 'h-14 w-full min-w-0 rounded-xl border border-fl-field bg-fl-bg text-center text-2xl font-semibold tabular-nums text-fl-tx outline-none placeholder:text-fl-tx2 focus:border-fl-acc focus-visible:ring-2 focus-visible:ring-fl-acc/50 disabled:opacity-60';
+
+  /** After the first and last exercise: one optional tap about how hard it felt. Never blocks anything. */
+  const effortBlock = (ex: PlanEx, rs: SetRow[]) => {
+    if (!askEffort || !session || !rs.length || !rs.every(r => r.done)) return null;
+    if (ex.id !== exercises[0]?.id && ex.id !== exercises[exercises.length - 1]?.id) return null;
+    const chosen = efforts[ex.exercise_name];
+    const open = effortOpen[ex.exercise_name];
+    if (chosen && !open) return (
+      <p className="mt-3 text-sm text-fl-tx2">Felt: <span className="font-semibold text-fl-tx">{EFFORTS.find(e => e.id === chosen)?.title}</span>
+        <button onClick={() => setEffortOpen(m => ({ ...m, [ex.exercise_name]: true }))} className="ml-2 underline underline-offset-2">Change</button></p>
+    );
+    if (!chosen && open === false) return null; // skipped
+    return (
+      <div className="mt-3 rounded-xl bg-fl-s2 p-3" role="group" aria-label={`How challenging was ${ex.exercise_name}?`}>
+        <p className="mb-2 font-semibold">How challenging was that?</p>
+        <div className="grid grid-cols-2 gap-2">
+          {EFFORTS.map(e => (
+            <button key={e.id} onClick={() => answerEffort(ex, e.id)} aria-pressed={chosen === e.id}
+              className={`min-h-12 rounded-lg border px-2.5 py-2 text-left text-sm ${chosen === e.id ? 'border-fl-acc bg-fl-tint' : 'border-fl-line bg-fl-s1'}`}>
+              <span className="block font-semibold">{e.title}</span>{e.sub && <span className="block text-xs text-fl-tx2">{e.sub}</span>}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setEffortOpen(m => ({ ...m, [ex.exercise_name]: false }))} className="mt-2 h-10 text-sm text-fl-tx2 underline-offset-2 hover:underline">Skip</button>
+      </div>
+    );
+  };
+  const rirNote = <p className="mb-2 text-xs text-fl-tx2">RIR (optional): how many more clean reps you could have done. 0 = none left.</p>;
 
   if (loading) return <main className="mx-auto max-w-xl px-4 pt-6 text-fl-tx"><p className="text-fl-tx2">Loading your workout...</p></main>;
 
@@ -653,7 +723,7 @@ export default function LogPage() {
               <summary className="cursor-pointer list-none py-1">
                 <div className="text-[11px] uppercase tracking-wide text-fl-tx2">Target</div>
                 <div className="text-2xl font-semibold leading-tight tracking-tight">
-                  {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : `Find a ${ex.rep_min}-${ex.rep_max} rep weight`) : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} lb` : 'add load'} × ${t.reps}`)}
+                  {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : `Find your ${ex.rep_min}-${ex.rep_max} rep weight`) : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} lb` : 'add load'} × ${t.reps}`)}
                 </div>
                 <span className="text-xs text-fl-tx2 underline">why this target?</span>
               </summary>
@@ -691,6 +761,13 @@ export default function LogPage() {
                             onChange={e => setRow(ex.id, ai, { reps: e.target.value.replace(/\D/g, '') })} className={`${inputCls} mt-1 !h-16 !text-3xl`} />
                         </label>
                       </div>
+                      {trackRir && (
+                        <label className="mt-3 flex items-center justify-between gap-3 text-sm text-fl-tx2">
+                          <span>RIR <span className="text-xs">(optional, 0 = none left)</span></span>
+                          <input aria-label={`${ex.exercise_name} set ${ai + 1} reps in reserve`} inputMode="numeric" value={r.rir ?? ''} placeholder="-"
+                            onChange={e => setRow(ex.id, ai, { rir: e.target.value.replace(/\D/g, '').slice(0, 2) })} className={`${inputCls} !h-12 !w-20`} />
+                        </label>
+                      )}
                       <button onClick={() => toggleSet(ex, ai)}
                         className="mt-3 h-16 w-full rounded-2xl bg-fl-acc text-xl font-bold text-fl-on-acc">
                         Complete set {ai + 1}
@@ -698,11 +775,13 @@ export default function LogPage() {
                       <p className="mt-2 text-center text-xs text-fl-tx2">Empty boxes use the target.</p>
                     </div>
                   ) : <p className="font-semibold text-fl-ok">✓ All sets saved for this exercise.</p>}
+                  {effortBlock(ex, rs)}
                 </div>
               );
             })()}
 
             {!(focus && session) && <>
+            {trackRir && session && rirNote}
             <div className="mb-1 grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3.25rem] gap-2 text-center text-[11px] uppercase tracking-wide text-fl-tx2">
               <span>Set</span><span>Previous</span><span>{bw || added ? '+Lb' : 'Lb'}</span><span>Reps</span><span className="sr-only">Done</span>
             </div>
@@ -739,6 +818,14 @@ export default function LogPage() {
                     className={`h-14 w-[3.25rem] rounded-xl text-xl font-bold disabled:opacity-40 ${r.state === 'failed' ? 'border-2 border-fl-bad bg-fl-bad/15 text-fl-bad' : r.state === 'local' ? 'border-2 border-dashed border-fl-ok text-fl-ok' : r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'}`}
                   >{r.state === 'failed' ? '↻' : r.state === 'local' ? '◌' : '✓'}</button>
                 </div>
+                {trackRir && session && (r.done
+                  ? (r.rir ? <p className="mt-1 text-right text-xs text-fl-tx2">RIR {r.rir}</p> : null)
+                  : (
+                    <label className="mt-1 flex items-center justify-end gap-2 text-xs text-fl-tx2">RIR
+                      <input aria-label={`${ex.exercise_name} set ${i + 1} reps in reserve`} inputMode="numeric" value={r.rir ?? ''} placeholder="-"
+                        onChange={e => setRow(ex.id, i, { rir: e.target.value.replace(/\D/g, '').slice(0, 2) })} className={`${inputCls} !h-10 !w-16`} />
+                    </label>
+                  ))}
                 {r.state === 'local' && !ob.online && <p className="mt-1 text-right text-xs text-fl-tx2" role="status">On this device. Syncs when you reconnect.</p>}
                 {r.state === 'failed' && <p className="mt-1 text-right text-xs text-fl-bad" role="alert">Not saved to your account. Tap ↻ to retry.</p>}
                 </div>
@@ -750,6 +837,7 @@ export default function LogPage() {
                 {rs.length > 1 && !rs[rs.length - 1].done && <button onClick={() => removeLastSet(ex)} className="text-fl-tx2 underline-offset-2 hover:underline">Remove last set</button>}
               </div>
             )}
+            {effortBlock(ex, rs)}
             </>}
           </section>
         );

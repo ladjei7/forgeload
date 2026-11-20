@@ -22,17 +22,19 @@ const strip = (r: Row): Row => { const { user_id: _u, ...rest } = r; void _u; re
 export type Export = {
   exported_at: string; app: string; note: string;
   plans: Row[]; sessions: Row[]; custom_exercises: Row[]; favorites_and_recents: Row[];
-  training_preferences: Row[]; activity_log: Row[];
+  training_preferences: Row[]; activity_log: Row[]; schedules: Row[]; schedule_answers: Row[];
 };
 
 export async function buildExport(): Promise<Export> {
-  const [plans, sessions, custom, prefs, tprefs, events] = await Promise.all([
+  const [plans, sessions, custom, prefs, tprefs, events, schedules, answers] = await Promise.all([
     all('workout_plans', '*, workout_days(*, plan_exercises(*))'),
     all('workout_sessions', '*, workout_days(day_name), exercise_logs(*, exercise_sets(*))'),
     all('exercises', '*').then(r => r.filter(x => x.user_id)),
     all('user_exercise_prefs', '*').catch(() => [] as Row[]),
     all('user_training_prefs', '*').catch(() => [] as Row[]),
     all('user_events', '*').catch(() => [] as Row[]),
+    all('plan_schedules', '*', 'updated_at').catch(() => [] as Row[]),
+    all('schedule_decisions', '*').catch(() => [] as Row[]),
   ]);
   const clean = (v: unknown): unknown => Array.isArray(v) ? v.map(clean) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(strip(v as Row)).map(([k, x]) => [k, clean(x)])) : v;
   return {
@@ -40,18 +42,19 @@ export async function buildExport(): Promise<Export> {
     note: 'Your own plans, workouts and custom exercises. Weights are in pounds. The built-in exercise library is not included.',
     plans: clean(plans) as Row[], sessions: clean(sessions) as Row[], custom_exercises: clean(custom) as Row[], favorites_and_recents: clean(prefs) as Row[],
     training_preferences: clean(tprefs) as Row[], activity_log: clean(events) as Row[],
+    schedules: clean(schedules) as Row[], schedule_answers: clean(answers) as Row[],
   };
 }
 
 const q = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 
 export function setsCsv(x: Export): string {
-  const lines = ['date,workout,exercise,set,weight_lb,reps'];
+  const lines = ['date,workout,exercise,set,weight_lb,reps,rir,effort'];
   for (const s of x.sessions) {
     const logs = (s.exercise_logs as Row[] | null) ?? [];
     const day = (s.day_name as string | null) ?? ((s.workout_days as Row | Row[] | null) && (Array.isArray(s.workout_days) ? (s.workout_days as Row[])[0] : s.workout_days as Row))?.day_name;
     for (const l of logs) for (const st of ((l.exercise_sets as Row[] | null) ?? []))
-      lines.push([s.completed_at ?? s.session_date, day, l.exercise_name, st.set_number, st.weight, st.reps].map(q).join(','));
+      lines.push([s.completed_at ?? s.session_date, day, l.exercise_name, st.set_number, st.weight, st.reps, st.rir, l.effort].map(q).join(','));
   }
   return lines.join('\n') + '\n';
 }

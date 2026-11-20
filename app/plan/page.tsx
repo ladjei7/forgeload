@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import Link from 'next/link';
 import ExercisePicker from '../components/ExercisePicker';
 import HowTo from '../components/HowTo';
+import ScheduleEditor from '../components/ScheduleEditor';
 import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
 import { logEvent } from '../lib/events';
 import { TEMPLATES } from '../lib/templates';
@@ -317,6 +318,8 @@ export default function PlanPage() {
               </div>
             </section>
           )}
+
+          {planId && days.length > 0 && <ScheduleEditor planId={planId} days={days} />}
         </>
       )}
 

@@ -67,3 +67,17 @@ test('storage: survives a save/load round trip; corrupt storage loads as empty i
 test('discarding a workout removes only that workout\'s pending writes', () => {
   assert.deepEqual(withoutSession([set('A', 'L', 8, 's1'), set('B', 'L', 8, 's2')], 's1').map(o => o.sessionId), ['s2']);
 });
+
+const eff = (logId: string, effort: 'easy' | 'manageable' | 'very_hard' | 'unsure' | null, s = 's1'): Op => ({ opId: 'e' + logId + effort, kind: 'effort', sessionId: s, at: 1, logId, effort });
+test('effort: a newer answer replaces the pending one; it is sent after its log, and waits if the log was rejected', async () => {
+  let q: Op[] = []; q = enqueue(q, log('L1')); q = enqueue(q, eff('L1', 'easy')); q = enqueue(q, eff('L1', 'very_hard'));
+  assert.deepEqual(q.map(o => o.kind), ['log', 'effort']);
+  assert.equal((q[1] as Extract<Op, { kind: 'effort' }>).effort, 'very_hard');
+  const seen: string[] = [];
+  const r = await flush(q, async op => { seen.push(op.kind); return op.kind === 'log' ? 'permanent' : 'ok'; });
+  assert.deepEqual(seen, ['log']); assert.equal(r.remaining.length, 2);
+});
+test('overlay restores pending effort answers after a refresh', () => {
+  const o = overlay([log('L1'), eff('L1', 'manageable'), eff('L2', 'easy', 'other')], 's1');
+  assert.deepEqual(o.efforts, { L1: 'manageable' });
+});
