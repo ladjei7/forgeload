@@ -1,11 +1,11 @@
 // Pure helpers for the Home screen. No UI, no database. Nothing here invents data:
 // with no history, last performance is null and the week is empty.
-import { suggestTarget, defaultRestSeconds, type PrevSet, type Target } from './progression.ts';
+import { suggestTarget, defaultRestSeconds, workingWeight, workingSet, type PrevSet, type Target } from './progression.ts';
 import { RULES } from './rules.ts';
 
 export type HistEntry = { name: string; exerciseId: string | null; at: string; sets: { set_number: number; reps: number; weight: number }[] };
 export type PlanExLite = { name: string; exerciseId: string | null; sets: number; repMin: number; repMax: number };
-export type ExSummary = { name: string; sets: number; repMin: number; repMax: number; last: PrevSet[] | null; target: Target };
+export type ExSummary = { name: string; sets: number; repMin: number; repMax: number; last: PrevSet[] | null; lastShown: PrevSet | null; target: Target };
 
 /** Most recent completed session's sets for an exercise. Matches by exercise id first, then by name. */
 export function lastSets(hist: HistEntry[], ex: { name: string; exerciseId: string | null }): PrevSet[] | null {
@@ -26,8 +26,8 @@ export function summarize(plan: PlanExLite[], hist: HistEntry[], convert: (lb: n
     const raw = lastSets(hist, p);
     const last = raw ? raw.map(s => ({ ...s, weight: convert(s.weight) })) : null;
     const t = suggestTarget(last ?? [], p.repMin, p.repMax, step);
-    const top = last?.length ? Math.max(...last.map(s => s.weight)) : 0;
-    return { name: p.name, sets: p.sets, repMin: p.repMin, repMax: p.repMax, last, target: t.weight === null ? t : { ...t, weight: round(t.weight, t.action === 'add_weight' ? top : undefined) } };
+    const top = last?.length ? workingWeight(last) : 0;
+    return { name: p.name, sets: p.sets, repMin: p.repMin, repMax: p.repMax, last, lastShown: last ? workingSet(last) : null, target: t.weight === null ? t : { ...t, weight: round(t.weight, t.action === 'add_weight' ? top : undefined) } };
   });
 }
 

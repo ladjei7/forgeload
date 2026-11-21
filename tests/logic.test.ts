@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { suggestTarget, defaultRestSeconds, roundToIncrement } from '../app/lib/progression.ts';
+import { suggestTarget, defaultRestSeconds, roundToIncrement, workingWeight, workingSet } from '../app/lib/progression.ts';
 import { nextDayId } from '../app/lib/rotation.ts';
 import { localDateString, parseLocalDate } from '../app/lib/dates.ts';
 
@@ -10,7 +10,7 @@ test('no history -> start, no weight suggested', () => {
   const t = suggestTarget([], 8, 10);
   assert.equal(t.action, 'start');
   assert.equal(t.weight, null);
-  assert.equal(t.reps, 8);
+  assert.equal(t.reps, 10); // matches the first-time headline: stop at the top of the range
 });
 
 test('all sets at top of range -> add weight, reset to bottom of range', () => {
@@ -165,4 +165,20 @@ test('onboarding v2: 1 day, brand new, new goals and session lengths', async () 
   assert.ok(fit.days[0].exercises.every(e => e[2] >= 8 && e[3] > e[2]), 'general fitness uses 8+ reps');
   const fat = tailorTemplate(tpl, 'fat_loss', 75) as { days: { exercises: [string, number, number, number][] }[] };
   assert.deepEqual(fat.days[0].exercises[0], ['Squat', 3, 5, 8], 'fat loss keeps the muscle-building rep ranges');
+});
+
+test('working weight: the weight used most; later wins a tie (persona test: "Too heavy" then lighter)', () => {
+  // Sofia: 42.5 x 10 felt too heavy, then 37.5 x 5 twice. Next time builds on 37.5, not 45.
+  assert.equal(workingWeight(sets([42.5, 10], [37.5, 5], [37.5, 5])), 37.5);
+  const t = suggestTarget(sets([42.5, 10], [37.5, 5], [37.5, 5]), 5, 8, 2.5);
+  assert.equal(t.action, 'add_reps'); assert.equal(t.weight, 37.5); assert.equal(t.reps, 6);
+  // Too heavy then one lighter set: the later weight wins the tie.
+  assert.equal(workingWeight(sets([100, 6], [90, 8])), 90);
+  // Warm-ups do not decide: fewer sets at the light weight.
+  assert.equal(workingWeight(sets([95, 10], [135, 8], [135, 8], [135, 7])), 135);
+  // A pyramid judges its last step; a back-off set after two top sets does not.
+  assert.equal(workingWeight(sets([100, 10], [110, 8], [120, 6])), 120);
+  assert.equal(workingWeight(sets([225, 5], [225, 5], [185, 8])), 225);
+  assert.deepEqual(workingSet(sets([25, 10], [30, 5], [30, 6])), { weight: 30, reps: 6 });
+  assert.equal(workingSet([]), null);
 });

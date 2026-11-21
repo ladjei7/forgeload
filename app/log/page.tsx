@@ -6,7 +6,7 @@ import HowTo, { type HowToInfo } from '../components/HowTo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
-import { suggestTarget, defaultRestSeconds, type PrevSet } from '../lib/progression';
+import { suggestTarget, defaultRestSeconds, workingWeight, type PrevSet } from '../lib/progression';
 import { nextDayId } from '../lib/rotation';
 import { chooseNext, localDate } from '../lib/schedule';
 import { loadScheduleState } from '../lib/scheduleData';
@@ -57,7 +57,8 @@ const one = <T,>(x: T | T[] | null): T | null => (Array.isArray(x) ? x[0] ?? nul
 /** Wall-clock time for event handlers (kept outside the component so render stays pure). */
 const clockNow = () => Date.now();
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-const clean = (v: string) => v.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+// Phones in many countries show a comma on the decimal keypad: 37,5 means 37.5, never 375.
+const clean = (v: string) => v.replace(/,/g, '.').replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
 
 export default function LogPage() {
   const [loading, setLoading] = useState(true);
@@ -325,7 +326,7 @@ export default function LogPage() {
     for (const ex of exercises) {
       const ps = prev[ex.exercise_name]?.sets ?? [];
       const x = suggestTarget(ps, ex.rep_min, ex.rep_max, stepFor(unit));
-      const top = ps.length ? Math.max(...ps.map(s => s.weight)) : 0;
+      const top = ps.length ? workingWeight(ps) : 0;
       t[ex.id] = x.weight === null ? x : { ...x, weight: loadable(x.weight, unit, x.action === 'add_weight' ? top : undefined) };
     }
     return t;
@@ -616,7 +617,7 @@ export default function LogPage() {
         <h1 className="mb-1 text-3xl font-bold">Workout done</h1>
         <p className="mb-6 text-fl-tx2">{summary.dayName}</p>
         <div className="mb-4 grid grid-cols-2 gap-3">
-          {[['Time', `${summary.minutes} min`], ['Exercises', String(summary.exercises)], ['Sets', String(summary.sets)], ['Volume', `${summary.volume.toLocaleString()} ${unitLabel(unit)}`]].map(([k, v]) => (
+          {[['Time', `${summary.minutes} min`], ['Exercises', String(summary.exercises)], ['Sets', String(summary.sets)], ['Volume', `${summary.volume.toLocaleString('en-US')} ${unitLabel(unit)}`]].map(([k, v]) => (
             <div key={k} className={card}><div className="text-xs uppercase tracking-wide text-fl-tx2">{k}</div><div className="text-2xl font-bold tabular-nums">{v}</div></div>
           ))}
         </div>

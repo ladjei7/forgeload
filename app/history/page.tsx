@@ -129,7 +129,7 @@ export default function HistoryPage() {
                         <span className="flex shrink-0 items-baseline gap-1.5 text-xs tabular-nums text-fl-tx2">
                           {trend && <span className={`text-base font-bold ${TREND[trend].cls}`} title={TREND[trend].label}>
                             <span aria-hidden="true">{trend}</span><span className="sr-only">{TREND[trend].label}</span></span>}
-                          {volume > 0 && `${Math.round(show(volume, unit)).toLocaleString()} ${label(unit)} total`}
+                          {volume > 0 && `${Math.round(show(volume, unit)).toLocaleString('en-US')} ${label(unit)} total`}
                         </span>
                       </div>
                       {sorted.length > 0 ? (

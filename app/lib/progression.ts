@@ -35,13 +35,13 @@ export function suggestTarget(
     return {
       action: 'start',
       weight: null,
-      reps: repMin,
-      reason: `No history for this exercise yet. Pick a weight you can lift for ${repMin}-${repMax} reps with a rep or two to spare.`,
+      // The first-time headline says "stop at the top of the range", so an empty reps box means that.
+      reps: repMax,
+      reason: `No history for this exercise yet. Pick a weight you could lift about ${repMax + 2} times with good form, and stop at ${repMax}.`,
     };
   }
 
-  // Judge the heaviest weight used. Lighter sets (warm-ups, back-offs) don't decide progression.
-  const top = Math.max(...valid.map(s => s.weight));
+  const top = workingWeight(valid);
   const working = valid.filter(s => s.weight === top);
   const lowestReps = Math.min(...working.map(s => s.reps));
 
@@ -79,6 +79,28 @@ export function suggestTarget(
     reps,
     reason: `Stay at ${top}. Your lowest set was ${lowestReps} reps, so aim for ${reps} on every set. Once every set hits ${repMax}, go up in weight.`,
   };
+}
+
+/**
+ * The weight someone actually worked at: the weight used for the most sets. On a tie, the one used
+ * later wins. So warm-ups don't count (fewer sets), a pyramid judges its last step, and a first set
+ * that was too heavy (then dropped) doesn't push next time's target up.
+ */
+export function workingWeight(sets: PrevSet[]): number {
+  const valid = sets.filter(s => s.reps > 0 && s.weight >= 0);
+  if (!valid.length) return 0;
+  const count = new Map<number, number>();
+  for (const s of valid) count.set(s.weight, (count.get(s.weight) ?? 0) + 1);
+  const most = Math.max(...count.values());
+  for (let i = valid.length - 1; i >= 0; i--) if (count.get(valid[i].weight) === most) return valid[i].weight;
+  return valid[valid.length - 1].weight;
+}
+
+/** The set to show as "Last": the most reps at the working weight. */
+export function workingSet(sets: PrevSet[]): PrevSet | null {
+  const w = workingWeight(sets);
+  const at = sets.filter(s => s.reps > 0 && s.weight === w);
+  return at.length ? at.reduce((a, b) => (b.reps > a.reps ? b : a)) : null;
 }
 
 // Simple rest default by rep range. Heavier, lower-rep work gets longer rest.

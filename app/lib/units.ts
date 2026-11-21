@@ -7,7 +7,7 @@ const KEY = 'fl-unit';
 
 /** Shown value in the person's unit. kg is rounded to 0.1 so 60 kg typed shows back as 60. */
 export function show(lb: number, unit: Unit): number {
-  if (unit === 'lb') return Math.round(lb * 100) / 100;
+  if (unit === 'lb') return Math.round(lb * 10) / 10; // one decimal at most: 82.67 shows as 82.7
   return Math.round((lb / LB_PER_KG) * 10) / 10;
 }
 /** A typed value in the person's unit, converted to the stored pounds (2 decimals). */
