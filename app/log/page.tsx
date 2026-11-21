@@ -3,10 +3,12 @@ import { logEvent } from '../lib/events';
 import { SWAP_REASONS, type SwapReason } from '../lib/rules';
 import ExercisePicker from '../components/ExercisePicker';
 import HowTo, { type HowToInfo } from '../components/HowTo';
+import { Icon } from '../components/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 import { suggestTarget, defaultRestSeconds, workingWeight, type PrevSet } from '../lib/progression';
+import { strength } from '../lib/progressStats';
 import { nextDayId } from '../lib/rotation';
 import { chooseNext, localDate } from '../lib/schedule';
 import { loadScheduleState } from '../lib/scheduleData';
@@ -34,7 +36,8 @@ type Session = { id: string; workout_day_id: string; started_at: string };
 type Prev = { sets: PrevSet[] };
 type Summary = {
   dayName: string; minutes: number; exercises: number; sets: number; volume: number;
-  prs: { name: string; weight: number; before: number }[];
+  prs: { name: string; now: string; before: string }[];
+  firstTime: boolean;
 };
 
 type HistRow = {
@@ -71,7 +74,8 @@ export default function LogPage() {
   const [exercises, setExercises] = useState<PlanEx[]>([]);
   const [meta, setMeta] = useState<Record<string, { tracking: string; load: string; howto: HowToInfo }>>({});
   const [prev, setPrev] = useState<Record<string, Prev>>({});
-  const [bestWeight, setBestWeight] = useState<Record<string, number>>({});
+  // Best set ever per exercise (strength estimate, so more reps at the same weight counts too).
+  const [bestSet, setBestSet] = useState<Record<string, { weight: number; reps: number; score: number }>>({});
   const [session, setSession] = useState<Session | null>(null);
   const [rows, setRows] = useState<Record<string, SetRow[]>>({});
   const [starting, setStarting] = useState(false);
@@ -142,7 +146,7 @@ export default function LogPage() {
 
     // History for these exercises, from COMPLETED sessions only.
     const prevMap: Record<string, Prev> = {};
-    const best: Record<string, number> = {};
+    const bestSets: Record<string, { weight: number; reps: number; score: number }> = {};
     if (list.length) {
       // A past log belongs to a plan exercise if it has the same exercise_id (survives renames)
       // or, for older rows without an id, the same name. Different exercises never share history.
@@ -162,7 +166,11 @@ export default function LogPage() {
         if (!key) continue;
         const at = one(r.workout_sessions)?.completed_at ?? '';
         (byName[key] ??= []).push({ at, sets: r.exercise_sets });
-        for (const s of r.exercise_sets ?? []) if (s.reps > 0) best[key] = Math.max(best[key] ?? 0, show(s.weight, getUnit()));
+        for (const s of r.exercise_sets ?? []) if (s.reps > 0) {
+          const w = show(s.weight, getUnit());
+          const score = w > 0 ? strength(w, s.reps) : s.reps;
+          if (!bestSets[key] || score > bestSets[key].score) bestSets[key] = { weight: w, reps: s.reps, score };
+        }
       }
       for (const [name, entries] of Object.entries(byName)) {
         entries.sort((a, b) => b.at.localeCompare(a.at));
@@ -171,7 +179,7 @@ export default function LogPage() {
       }
     }
     setPrev(prevMap);
-    setBestWeight(best);
+    setBestSet(bestSets);
 
     // Rows: empty rows for the plan, filled in from any sets already saved in this session.
     const saved: Record<string, Record<number, { id: string; reps: number; weight: number; rir: number | null }>> = {};
@@ -525,17 +533,24 @@ export default function LogPage() {
     // Summary. Volume is plain weight x reps; it is not a measure of strength or muscle gain.
     let sets = 0, volume = 0, exCount = 0;
     const prs: Summary['prs'] = [];
+    const fmtSet = (w: number, r: number) => (w > 0 ? `${w} ${unitLabel(unit)} × ${r}` : `${r} reps`);
     for (const ex of exercises) {
       const done = (rows[ex.id] ?? []).filter(r => r.done);
       if (!done.length) continue;
       exCount++; sets += done.length;
-      let top = 0;
-      for (const r of done) { volume += parseFloat(r.weight) * parseInt(r.reps, 10); top = Math.max(top, parseFloat(r.weight)); }
-      const before = bestWeight[ex.exercise_name];
-      if (before !== undefined && top > before) prs.push({ name: ex.exercise_name, weight: top, before });
+      let top: { weight: number; reps: number; score: number } | null = null;
+      for (const r of done) {
+        const w = parseFloat(r.weight) || 0, n = parseInt(r.reps, 10) || 0;
+        volume += w * n;
+        const score = w > 0 ? strength(w, n) : n;
+        if (!top || score > top.score) top = { weight: w, reps: n, score };
+      }
+      const before = bestSet[ex.exercise_name];
+      if (top && before && top.score > before.score) prs.push({ name: ex.exercise_name, now: fmtSet(top.weight, top.reps), before: fmtSet(before.weight, before.reps) });
     }
+    const firstTime = Object.keys(bestSet).length === 0;
     const minutes = Math.max(1, Math.round((Date.now() - new Date(session.started_at).getTime()) / 60000));
-    setSummary({ dayName, minutes, exercises: exCount, sets, volume: Math.round(volume), prs });
+    setSummary({ dayName, minutes, exercises: exCount, sets, volume: Math.round(volume), prs, firstTime });
     lsSet(LS.draft(session.id), null); stopRest();
     setSession(null);
     await loadPlanDays(planId);
@@ -615,19 +630,27 @@ export default function LogPage() {
     return (
       <main className="mx-auto max-w-xl px-4 pb-28 pt-6 text-fl-tx">
         <h1 className="mb-1 text-3xl font-bold">Workout done</h1>
-        <p className="mb-6 text-fl-tx2">{summary.dayName}</p>
-        <div className="mb-4 grid grid-cols-2 gap-3">
-          {[['Time', `${summary.minutes} min`], ['Exercises', String(summary.exercises)], ['Sets', String(summary.sets)], ['Volume', `${summary.volume.toLocaleString('en-US')} ${unitLabel(unit)}`]].map(([k, v]) => (
+        <p className="mb-5 text-fl-tx2">{summary.dayName}</p>
+        {summary.prs.length > 0 && (
+          <section className="mb-4 rounded-2xl border border-fl-acc/50 bg-fl-tint p-4">
+            <div className="mb-2 flex items-center gap-2 font-bold"><Icon name="star" size={20} filled className="text-fl-acc" />{summary.prs.length === 1 ? 'New record' : `${summary.prs.length} new records`}</div>
+            <ul className="space-y-1.5">
+              {summary.prs.map(p => <li key={p.name} className="text-sm"><span className="font-semibold">{p.name}: {p.now}</span> <span className="text-fl-tx2">(best was {p.before})</span></li>)}
+            </ul>
+          </section>
+        )}
+        {summary.firstTime && (
+          <section className="mb-4 rounded-2xl border border-fl-acc/50 bg-fl-tint p-4">
+            <div className="mb-1 flex items-center gap-2 font-bold"><Icon name="star" size={20} filled className="text-fl-acc" />Starting numbers saved</div>
+            <p className="text-sm text-fl-tx2">Next time, every exercise shows what you did today and a target to beat.</p>
+          </section>
+        )}
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          {[['Time', `${summary.minutes} min`], ['Exercises', String(summary.exercises)], ['Sets', String(summary.sets)]].map(([k, v]) => (
             <div key={k} className={card}><div className="text-xs uppercase tracking-wide text-fl-tx2">{k}</div><div className="text-2xl font-bold tabular-nums">{v}</div></div>
           ))}
         </div>
-        <p className="mb-4 text-xs text-fl-tx2">Volume is weight x reps added up. It helps you compare like with like, but it is not a direct measure of strength or muscle gain.</p>
-        {summary.prs.length > 0 && (
-          <div className={`${card} mb-4`}>
-            <div className="mb-2 font-bold text-fl-ok">Heaviest weight yet</div>
-            {summary.prs.map(p => <div key={p.name} className="text-sm">{p.name}: {p.weight} {unitLabel(unit)} <span className="text-fl-tx2">(was {p.before})</span></div>)}
-          </div>
-        )}
+        <p className="mb-5 text-sm text-fl-tx2">Total lifted: {summary.volume.toLocaleString('en-US')} {unitLabel(unit)} (every set&apos;s weight × reps, added up).</p>
         <button onClick={() => setSummary(null)} className="h-12 w-full rounded-xl bg-fl-acc text-base font-bold text-fl-on-acc">Done</button>
       </main>
     );

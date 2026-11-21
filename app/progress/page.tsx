@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 import { ui, Icon } from '../components/ui';
 import LiftChart from '../components/LiftChart';
-import { liftProgress, summary, recentRecords, setLabel as rawLabel, type PSession } from '../lib/progressStats';
-import { getUnit, show, type Unit } from '../lib/units';
+import { liftProgress, summary, recentRecords, improvement, headline, setLabel as rawLabel, type PSession } from '../lib/progressStats';
+import { getUnit, type Unit } from '../lib/units';
 
 const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -54,6 +54,12 @@ export default function ProgressPage() {
 
       {sessions && sessions.length > 0 && (
         <div className="space-y-4">
+          {/* One plain sentence: how it's going */}
+          <section className="flex items-start gap-3 rounded-2xl border border-fl-acc/50 bg-fl-tint p-4">
+            <Icon name="star" size={22} filled className="mt-0.5 shrink-0 text-fl-acc" />
+            <p className="font-semibold leading-snug">{headline(lifts, sum)}</p>
+          </section>
+
           {/* Headline numbers */}
           <div className="grid grid-cols-3 gap-2">
             {[
@@ -79,7 +85,7 @@ export default function ProgressPage() {
                   <li key={r.lift.key + r.point.sessionId} className="flex items-baseline justify-between gap-3 py-2.5">
                     <span className="min-w-0">
                       <span className="block font-semibold">{r.lift.name}</span>
-                      <span className="block text-xs text-fl-tx2">Up from {setLabel(r.previous)}</span>
+                      <span className="block text-xs text-fl-tx2">Was {setLabel(r.previous)}</span>
                     </span>
                     <span className="shrink-0 text-right">
                       <span className="block font-semibold tabular-nums">{setLabel(r.point)}</span>
@@ -94,24 +100,23 @@ export default function ProgressPage() {
           {/* Every lift */}
           <section className={ui.card}>
             <h2 className={ui.h2}>Your lifts</h2>
-            <p className={`${ui.sub} mb-1`}>Tap a lift to see its trend. Strength estimate turns your best set into one number, so more weight and more reps both count.</p>
+            <p className={`${ui.sub} mb-1`}>Your first time next to your best set. Tap a lift to see every workout.</p>
             <ul className="divide-y divide-fl-line">
               {shown.map(l => {
                 const isOpen = open === l.key;
-                const change = l.best.value - l.first.value;
+                const up = improvement(l, unit);
+                const many = l.points.length > 1;
                 return (
                   <li key={l.key} className="py-1">
                     <button onClick={() => setOpen(isOpen ? null : l.key)} aria-expanded={isOpen} className="flex w-full items-center gap-3 py-2.5 text-left">
                       <span className="min-w-0 flex-1">
                         <span className="block font-semibold">{l.name}</span>
                         <span className="block text-xs text-fl-tx2">
-                          Best {setLabel(l.best)} · {l.points.length} {l.points.length === 1 ? 'workout' : 'workouts'}
+                          {many ? <>First {setLabel(l.first)} · Best {setLabel(l.best)}</> : <>Starting point: {setLabel(l.best)}</>}
                         </span>
                       </span>
-                      {l.points.length > 1 && change > 0 && (
-                        <span className="shrink-0 text-xs font-semibold tabular-nums text-fl-ok" title={l.kind === 'reps' ? 'More reps than your first time' : 'Stronger than your first time'}>
-                          +{l.kind === 'reps' ? `${change} reps` : `${Math.round((change / l.first.value) * 100)}%`}
-                        </span>
+                      {up && (
+                        <span className="shrink-0 rounded-full bg-fl-ok/15 px-2 py-0.5 text-xs font-semibold tabular-nums text-fl-ok">{up}</span>
                       )}
                       <Icon name={isOpen ? 'up' : 'down'} size={18} className="shrink-0 text-fl-tx2" />
                     </button>
@@ -120,13 +125,12 @@ export default function ProgressPage() {
                         <LiftChart points={l.points} kind={l.kind} name={l.name} unit={unit} />
                         <table className="mt-3 w-full text-sm tabular-nums">
                           <caption className="sr-only">{l.name}: best set each workout</caption>
-                          <thead><tr className="text-left text-xs text-fl-tx2"><th className="py-1 font-medium">Date</th><th className="py-1 font-medium">Best set</th><th className="py-1 text-right font-medium">{l.kind === 'weight' ? 'Strength est.' : 'Reps'}</th></tr></thead>
+                          <thead><tr className="text-left text-xs text-fl-tx2"><th className="py-1 font-medium">Date</th><th className="py-1 text-right font-medium">Best set</th></tr></thead>
                           <tbody>
                             {[...l.points].reverse().slice(0, 10).map(p => (
                               <tr key={p.sessionId} className="border-t border-fl-line">
                                 <td className="py-1.5">{fmt(p.date)}</td>
-                                <td className="py-1.5">{setLabel(p)}{p.record && <span className="ml-1.5 text-xs font-semibold text-fl-ok">Record</span>}</td>
-                                <td className="py-1.5 text-right">{l.kind === 'weight' ? show(p.value, unit) : p.value}</td>
+                                <td className="py-1.5 text-right">{p.record && <span className="mr-1.5 text-xs font-semibold text-fl-ok">Record</span>}{setLabel(p)}</td>
                               </tr>
                             ))}
                           </tbody>

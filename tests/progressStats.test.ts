@@ -85,3 +85,20 @@ test('weeks start on Monday', () => {
   assert.equal(weekStartOf(new Date('2026-11-22T10:00:00')).getDate(), 16); // Sunday -> previous Monday
   assert.equal(weekStartOf(new Date('2026-11-16T00:30:00')).getDate(), 16);
 });
+
+import { improvement, headline } from '../app/lib/progressStats.ts';
+test('progress in plain words: +lb, +reps, and a headline sentence', () => {
+  const lifts = liftProgress([
+    S('a', '2026-11-02T18:00:00', [['Bench', [[135, 8]]], ['Row', [[100, 8]]], ['Pull Up', [[0, 5]]], ['Curl', [[30, 10]]]]),
+    S('b', '2026-11-09T18:00:00', [['Bench', [[155, 8]]], ['Row', [[100, 11]]], ['Pull Up', [[0, 8]]], ['Curl', [[30, 9]]]]),
+  ]);
+  const by = (n: string) => lifts.find(l => l.name === n)!;
+  assert.equal(improvement(by('Bench')), '+20 lb');
+  assert.equal(improvement(by('Row')), '+3 reps');
+  assert.equal(improvement(by('Pull Up')), '+3 reps');
+  assert.equal(improvement(by('Curl')), null); // a dip is not shown as progress
+  assert.equal(improvement(by('Bench'), 'kg'), '+9.1 kg');
+  const s = summary([], lifts); s.workouts = 2;
+  assert.equal(headline(lifts, s), "You're stronger on 3 of 4 lifts since you started.");
+  assert.match(headline(lifts, { ...s, workouts: 1 }), /starting numbers/);
+});

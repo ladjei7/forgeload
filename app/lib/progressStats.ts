@@ -112,3 +112,28 @@ export function recentRecords(lifts: LiftProgress[], now = new Date(), days = 30
 export function setLabel(p: { weight: number; reps: number }, unit: Unit = 'lb'): string {
   return p.weight > 0 ? `${show(p.weight, unit)} ${label(unit)} × ${p.reps}` : `${p.reps} reps`;
 }
+
+/**
+ * How a lift has improved since the first time, in words anyone can read at a glance:
+ * "+20 lb" when the best set is heavier, "+3 reps" at the same weight, "More reps" when the best set
+ * is lighter but clearly stronger overall. Null when there's nothing to celebrate yet.
+ */
+export function improvement(l: LiftProgress, unit: Unit = 'lb'): string | null {
+  if (l.points.length < 2 || l.best.value <= l.first.value) return null;
+  if (l.kind === 'reps') return `+${l.best.reps - l.first.reps} reps`;
+  const dw = Math.round((show(l.best.weight, unit) - show(l.first.weight, unit)) * 10) / 10;
+  if (dw > 0) return `+${dw} ${label(unit)}`;
+  if (l.best.weight === l.first.weight) return `+${l.best.reps - l.first.reps} reps`;
+  return 'More reps';
+}
+
+/** One plain sentence for the top of Progress. */
+export function headline(lifts: LiftProgress[], s: Summary): string {
+  if (s.workouts === 0) return '';
+  if (s.workouts === 1) return 'Your first workout is in. These are your starting numbers: beat any of them next time and it counts as a record.';
+  const tracked = lifts.filter(l => l.points.length > 1);
+  const up = tracked.filter(l => l.best.value > l.first.value).length;
+  if (!tracked.length) return `${s.workouts} workouts done. Repeat an exercise and you'll see it improve here.`;
+  if (!up) return `${s.workouts} workouts done. Records come from beating your best set, one rep or one small jump at a time.`;
+  return `You're stronger on ${up} of ${tracked.length} ${tracked.length === 1 ? 'lift' : 'lifts'} since you started.`;
+}

@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { setLabel, type Point } from '../lib/progressStats';
 import { show, type Unit } from '../lib/units';
 
-const W = 320, H = 150, L = 34, R = 14, T = 14, B = 22;
+const W = 320, H = 150, L = 12, R = 14, T = 14, B = 22;
 
 export default function LiftChart({ points: raw, kind, name, unit = 'lb' }: { points: Point[]; kind: 'weight' | 'reps'; name: string; unit?: Unit }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -24,7 +24,6 @@ export default function LiftChart({ points: raw, kind, name, unit = 'lb' }: { po
   const area = `${path} L${x(points[points.length - 1]).toFixed(1)},${H - B} L${x(points[0]).toFixed(1)},${H - B} Z`;
   const ticks = [lo, (lo + hi) / 2, hi].map(v => Math.round(v));
   const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const suffix = kind === 'weight' ? '' : ' reps';
   const last = points[points.length - 1];
   const i = hover ?? points.length - 1;
   const cur = points[i];
@@ -38,11 +37,11 @@ export default function LiftChart({ points: raw, kind, name, unit = 'lb' }: { po
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between text-sm" aria-live="polite">
-        <span className="font-semibold tabular-nums text-fl-tx">{cur.value}{suffix}{cur.record && <span className="ml-1.5 text-xs font-semibold text-fl-ok">New record</span>}</span>
-        <span className="text-xs tabular-nums text-fl-tx2">{fmt(cur.date)} · {setLabel(cur, unit)}</span>
+        <span className="font-semibold tabular-nums text-fl-tx">{setLabel(cur, unit)}{cur.record && <span className="ml-1.5 text-xs font-semibold text-fl-ok">New record</span>}</span>
+        <span className="text-xs tabular-nums text-fl-tx2">{fmt(cur.date)}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="block w-full touch-none select-none outline-none" role="img" tabIndex={0}
-        aria-label={`${name}: ${points.length} workouts, from ${points[0].value}${suffix} on ${fmt(points[0].date)} to ${last.value}${suffix} on ${fmt(last.date)}. Use left and right arrow keys to read each workout.`}
+        aria-label={`${name}: ${points.length} workouts, best set ${setLabel(points[0], unit)} on ${fmt(points[0].date)}, latest ${setLabel(last, unit)} on ${fmt(last.date)}. Use left and right arrow keys to read each workout.`}
         onPointerMove={e => nearest(e.clientX, e.currentTarget)} onPointerDown={e => nearest(e.clientX, e.currentTarget)}
         onPointerLeave={() => setHover(null)}
         onKeyDown={e => {
@@ -52,7 +51,7 @@ export default function LiftChart({ points: raw, kind, name, unit = 'lb' }: { po
         {ticks.map(v => (
           <g key={v}>
             <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="var(--fl-line)" strokeWidth="1" />
-            <text x={L - 6} y={y(v) + 3.5} textAnchor="end" fontSize="10" fill="var(--fl-tx2)" className="tabular-nums">{v}</text>
+            {/* No numbers on this axis: the line is a blend of weight and reps, so it has no unit to read. */}
           </g>
         ))}
         <text x={L} y={H - 6} fontSize="10" fill="var(--fl-tx2)">{fmt(points[0].date)}</text>
