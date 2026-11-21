@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import Link from 'next/link';
 import { ui } from '../components/ui';
+import { getUnit, show, label, type Unit } from '../lib/units';
 import { parseLocalDate } from '../lib/dates';
 
 type SetData = {
@@ -31,6 +32,7 @@ type Session = {
 export default function HistoryPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unit] = useState<Unit>(() => getUnit());
 
   useEffect(() => {
     let alive = true;
@@ -127,7 +129,7 @@ export default function HistoryPage() {
                         <span className="flex shrink-0 items-baseline gap-1.5 text-xs tabular-nums text-fl-tx2">
                           {trend && <span className={`text-base font-bold ${TREND[trend].cls}`} title={TREND[trend].label}>
                             <span aria-hidden="true">{trend}</span><span className="sr-only">{TREND[trend].label}</span></span>}
-                          {volume > 0 && `${volume.toLocaleString()} lb total`}
+                          {volume > 0 && `${Math.round(show(volume, unit)).toLocaleString()} ${label(unit)} total`}
                         </span>
                       </div>
                       {sorted.length > 0 ? (
@@ -135,7 +137,7 @@ export default function HistoryPage() {
                           {sorted.map(set => (
                             <li key={set.set_number} className="rounded-lg bg-fl-s2 px-2.5 py-1 text-sm tabular-nums">
                               <span className="sr-only">Set {set.set_number}: </span>
-                              {set.weight > 0 ? <>{set.weight} lb × {set.reps}</> : <>{set.reps} reps</>}
+                              {set.weight > 0 ? <>{show(set.weight, unit)} {label(unit)} × {set.reps}</> : <>{set.reps} reps</>}
                             </li>
                           ))}
                         </ul>

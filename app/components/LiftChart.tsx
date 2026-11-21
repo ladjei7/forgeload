@@ -3,12 +3,15 @@
 // end-dot with a surface ring, the latest value labelled. Tap, drag or use arrow keys to read any
 // workout; the same numbers are always listed in the table under the chart.
 import { useState } from 'react';
-import type { Point } from '../lib/progressStats';
+import { setLabel, type Point } from '../lib/progressStats';
+import { show, type Unit } from '../lib/units';
 
 const W = 320, H = 150, L = 34, R = 14, T = 14, B = 22;
 
-export default function LiftChart({ points, kind, name }: { points: Point[]; kind: 'weight' | 'reps'; name: string }) {
+export default function LiftChart({ points: raw, kind, name, unit = 'lb' }: { points: Point[]; kind: 'weight' | 'reps'; name: string; unit?: Unit }) {
   const [hover, setHover] = useState<number | null>(null);
+  // Strength estimates are computed in pounds; shown in the person's unit.
+  const points = kind === 'weight' ? raw.map(p => ({ ...p, value: show(p.value, unit) })) : raw;
   if (points.length < 2) return <p className="text-sm text-fl-tx2">Log this exercise once more to see a trend.</p>;
 
   const vals = points.map(p => p.value);
@@ -21,7 +24,7 @@ export default function LiftChart({ points, kind, name }: { points: Point[]; kin
   const area = `${path} L${x(points[points.length - 1]).toFixed(1)},${H - B} L${x(points[0]).toFixed(1)},${H - B} Z`;
   const ticks = [lo, (lo + hi) / 2, hi].map(v => Math.round(v));
   const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const unit = kind === 'weight' ? '' : ' reps';
+  const suffix = kind === 'weight' ? '' : ' reps';
   const last = points[points.length - 1];
   const i = hover ?? points.length - 1;
   const cur = points[i];
@@ -35,11 +38,11 @@ export default function LiftChart({ points, kind, name }: { points: Point[]; kin
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between text-sm" aria-live="polite">
-        <span className="font-semibold tabular-nums text-fl-tx">{cur.value}{unit}{cur.record && <span className="ml-1.5 text-xs font-semibold text-fl-ok">New record</span>}</span>
-        <span className="text-xs tabular-nums text-fl-tx2">{fmt(cur.date)} · {cur.weight > 0 ? `${cur.weight} lb × ${cur.reps}` : `${cur.reps} reps`}</span>
+        <span className="font-semibold tabular-nums text-fl-tx">{cur.value}{suffix}{cur.record && <span className="ml-1.5 text-xs font-semibold text-fl-ok">New record</span>}</span>
+        <span className="text-xs tabular-nums text-fl-tx2">{fmt(cur.date)} · {setLabel(cur, unit)}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="block w-full touch-none select-none outline-none" role="img" tabIndex={0}
-        aria-label={`${name}: ${points.length} workouts, from ${points[0].value}${unit} on ${fmt(points[0].date)} to ${last.value}${unit} on ${fmt(last.date)}. Use left and right arrow keys to read each workout.`}
+        aria-label={`${name}: ${points.length} workouts, from ${points[0].value}${suffix} on ${fmt(points[0].date)} to ${last.value}${suffix} on ${fmt(last.date)}. Use left and right arrow keys to read each workout.`}
         onPointerMove={e => nearest(e.clientX, e.currentTarget)} onPointerDown={e => nearest(e.clientX, e.currentTarget)}
         onPointerLeave={() => setHover(null)}
         onKeyDown={e => {

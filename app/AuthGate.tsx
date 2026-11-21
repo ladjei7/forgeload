@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { supabase, RECOVERY_KEY } from './lib/supabase';
 import { ensureInit, startAutoSync, syncNow } from './lib/outboxSync';
+import { setUnitLocal } from './lib/units';
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -24,7 +25,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       else {
         setReady(true);
         // Durable saving: send any sets stored on this device from an earlier visit, and keep retrying.
-        if (data.session) void ensureInit().then(() => { startAutoSync(); void syncNow(); });
+        if (data.session) {
+          void ensureInit().then(() => { startAutoSync(); void syncNow(); });
+          // The weight unit follows the account, so every device shows the same.
+          supabase.from('user_training_prefs').select('*').maybeSingle().then(({ data: p }) => { if (p?.unit === 'kg' || p?.unit === 'lb') setUnitLocal(p.unit); }, () => {});
+        }
       }
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {

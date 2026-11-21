@@ -19,10 +19,13 @@ export function lastSets(hist: HistEntry[], ex: { name: string; exerciseId: stri
   return [...latest.sets].sort((a, b) => a.set_number - b.set_number).map(s => ({ reps: s.reps, weight: s.weight }));
 }
 
-export function summarize(plan: PlanExLite[], hist: HistEntry[]): ExSummary[] {
+/** `convert` turns stored pounds into the person's unit; `step` is the weight jump in that unit. */
+export function summarize(plan: PlanExLite[], hist: HistEntry[], convert: (lb: number) => number = x => x, step?: number): ExSummary[] {
   return plan.map(p => {
-    const last = lastSets(hist, p);
-    return { name: p.name, sets: p.sets, repMin: p.repMin, repMax: p.repMax, last, target: suggestTarget(last ?? [], p.repMin, p.repMax) };
+    const raw = lastSets(hist, p);
+    const last = raw ? raw.map(s => ({ ...s, weight: convert(s.weight) })) : null;
+    const t = suggestTarget(last ?? [], p.repMin, p.repMax, step);
+    return { name: p.name, sets: p.sets, repMin: p.repMin, repMax: p.repMax, last, target: t.weight === null ? t : { ...t, weight: Math.round(t.weight * 10) / 10 } };
   });
 }
 

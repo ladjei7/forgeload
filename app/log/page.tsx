@@ -13,6 +13,7 @@ import { loadScheduleState } from '../lib/scheduleData';
 import { pickCurrent, setCurrentPlan } from '../lib/currentPlan';
 import { localDateString } from '../lib/dates';
 import { newId, overlay, forSession, type Op, type Effort } from '../lib/outbox';
+import { getUnit, show, toLb, stepFor, longName, label as unitLabel, type Unit } from '../lib/units';
 import { ensureInit, getState, subscribe, addOp, dropSession, syncNow } from '../lib/outboxSync';
 
 type Plan = { id: string; name: string; is_active?: boolean | null };
@@ -75,6 +76,8 @@ export default function LogPage() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   // Effort: plain-language question (on by default) and optional reps in reserve (off by default).
+  // Weights are stored in pounds; everything on this screen is in the person's unit.
+  const [unit] = useState<Unit>(() => getUnit());
   const [askEffort, setAskEffort] = useState(true);
   const [trackRir, setTrackRir] = useState(false);
   const [efforts, setEfforts] = useState<Record<string, Effort | null>>({}); // by exercise name, this workout
@@ -156,12 +159,12 @@ export default function LogPage() {
         if (!key) continue;
         const at = one(r.workout_sessions)?.completed_at ?? '';
         (byName[key] ??= []).push({ at, sets: r.exercise_sets });
-        for (const s of r.exercise_sets ?? []) if (s.reps > 0) best[key] = Math.max(best[key] ?? 0, s.weight);
+        for (const s of r.exercise_sets ?? []) if (s.reps > 0) best[key] = Math.max(best[key] ?? 0, show(s.weight, getUnit()));
       }
       for (const [name, entries] of Object.entries(byName)) {
         entries.sort((a, b) => b.at.localeCompare(a.at));
         const latest = entries.find(e => (e.sets ?? []).some(s => s.reps > 0));
-        if (latest) prevMap[name] = { sets: [...(latest.sets ?? [])].sort((a, b) => a.set_number - b.set_number).map(s => ({ reps: s.reps, weight: s.weight })) };
+        if (latest) prevMap[name] = { sets: [...(latest.sets ?? [])].sort((a, b) => a.set_number - b.set_number).map(s => ({ reps: s.reps, weight: show(s.weight, getUnit()) })) };
       }
     }
     setPrev(prevMap);
@@ -190,7 +193,7 @@ export default function LogPage() {
       const count = Math.max(ex.target_sets, ...Object.keys(have).map(Number), 0);
       next[ex.id] = Array.from({ length: count }, (_, i) => {
         const s = have[i + 1];
-        if (s) return { weight: String(s.weight), reps: String(s.reps), done: true, setId: s.id, rir: s.rir != null ? String(s.rir) : '' };
+        if (s) return { weight: String(show(s.weight, getUnit())), reps: String(s.reps), done: true, setId: s.id, rir: s.rir != null ? String(s.rir) : '' };
         const d = drafts[ex.id]?.[i];
         return { weight: d?.weight ?? '', reps: d?.reps ?? '', done: false };
       });
@@ -204,7 +207,7 @@ export default function LogPage() {
       for (const p of o.sets) {
         const list = next[p.peId]; if (!list) continue;
         while (list.length <= p.idx) list.push({ weight: '', reps: '', done: false });
-        list[p.idx] = { weight: String(p.payload.weight), reps: String(p.payload.reps), done: true, setId: p.payload.id, state: p.failed ? 'failed' : 'local', rir: p.payload.rir != null ? String(p.payload.rir) : '' };
+        list[p.idx] = { weight: String(show(p.payload.weight, getUnit())), reps: String(p.payload.reps), done: true, setId: p.payload.id, state: p.failed ? 'failed' : 'local', rir: p.payload.rir != null ? String(p.payload.rir) : '' };
       }
       // Effort answers still waiting to sync.
       const nameById = Object.fromEntries(Object.entries({ ...logIds.current, ...o.logIds }).map(([n, id]) => [id, n]));
@@ -317,9 +320,12 @@ export default function LogPage() {
 
   const targets = useMemo(() => {
     const t: Record<string, ReturnType<typeof suggestTarget>> = {};
-    for (const ex of exercises) t[ex.id] = suggestTarget(prev[ex.exercise_name]?.sets ?? [], ex.rep_min, ex.rep_max);
+    for (const ex of exercises) {
+      const x = suggestTarget(prev[ex.exercise_name]?.sets ?? [], ex.rep_min, ex.rep_max, stepFor(unit));
+      t[ex.id] = x.weight === null ? x : { ...x, weight: Math.round(x.weight * 10) / 10 };
+    }
     return t;
-  }, [exercises, prev]);
+  }, [exercises, prev, unit]);
 
   const restLeft = rest ? (rest.paused ?? Math.max(0, Math.ceil((rest.end - now) / 1000))) : 0;
   const elapsed = session ? Math.max(0, Math.floor((now - Date.parse(session.started_at)) / 1000)) : 0;
@@ -446,7 +452,7 @@ export default function LogPage() {
     const logId = logIdFor(ex);
     const setId = row.setId ?? newId();
     addOp({ opId: newId(), kind: 'set', sessionId: session.id, at: t0, peId: ex.id, idx: i,
-      payload: { id: setId, exercise_log_id: logId, set_number: i + 1, reps, weight, completed: true, ...(trackRir ? { rir: rirValue(row.rir) } : {}) } });
+      payload: { id: setId, exercise_log_id: logId, set_number: i + 1, reps, weight: toLb(weight, unit), completed: true, ...(trackRir ? { rir: rirValue(row.rir) } : {}) } });
     setRow(ex.id, i, { weight: String(weight), reps: String(reps), done: true, setId, state: 'local' });
     startRest(defaultRestSeconds(ex.rep_max));
     void syncNow();
@@ -575,7 +581,7 @@ export default function LogPage() {
         <h1 className="mb-1 text-3xl font-bold">Workout done</h1>
         <p className="mb-6 text-fl-tx2">{summary.dayName}</p>
         <div className="mb-4 grid grid-cols-2 gap-3">
-          {[['Time', `${summary.minutes} min`], ['Exercises', String(summary.exercises)], ['Sets', String(summary.sets)], ['Volume', `${summary.volume.toLocaleString()} lb`]].map(([k, v]) => (
+          {[['Time', `${summary.minutes} min`], ['Exercises', String(summary.exercises)], ['Sets', String(summary.sets)], ['Volume', `${summary.volume.toLocaleString()} ${unitLabel(unit)}`]].map(([k, v]) => (
             <div key={k} className={card}><div className="text-xs uppercase tracking-wide text-fl-tx2">{k}</div><div className="text-2xl font-bold tabular-nums">{v}</div></div>
           ))}
         </div>
@@ -583,7 +589,7 @@ export default function LogPage() {
         {summary.prs.length > 0 && (
           <div className={`${card} mb-4`}>
             <div className="mb-2 font-bold text-fl-ok">Heaviest weight yet</div>
-            {summary.prs.map(p => <div key={p.name} className="text-sm">{p.name}: {p.weight} lb <span className="text-fl-tx2">(was {p.before})</span></div>)}
+            {summary.prs.map(p => <div key={p.name} className="text-sm">{p.name}: {p.weight} {unitLabel(unit)} <span className="text-fl-tx2">(was {p.before})</span></div>)}
           </div>
         )}
         <button onClick={() => setSummary(null)} className="h-12 w-full rounded-xl bg-fl-acc text-base font-bold text-fl-on-acc">Done</button>
@@ -750,8 +756,8 @@ export default function LogPage() {
                         {pv && <button type="button" onClick={() => setRow(ex.id, ai, { weight: String(pv.weight), reps: String(pv.reps) })} className="underline decoration-dotted underline-offset-4">Last time {pv.weight}×{pv.reps}</button>}
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <label className="text-xs uppercase tracking-wide text-fl-tx2">{bw || added ? '+Lb' : 'Lb'}
-                          <input aria-label={`${ex.exercise_name} set ${ai + 1} weight in pounds`} inputMode="decimal" value={r.weight}
+                        <label className="text-xs uppercase tracking-wide text-fl-tx2">{`${bw || added ? '+' : ''}${unit === 'kg' ? 'Kg' : 'Lb'}`}
+                          <input aria-label={`${ex.exercise_name} set ${ai + 1} weight in ${longName(unit)}`} inputMode="decimal" value={r.weight}
                             placeholder={bw && !t.weight && !pv?.weight ? 'BW' : t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
                             onChange={e => setRow(ex.id, ai, { weight: clean(e.target.value) })} className={`${inputCls} mt-1 !h-16 !text-3xl`} />
                         </label>
@@ -783,7 +789,7 @@ export default function LogPage() {
             {!(focus && session) && <>
             {trackRir && session && rirNote}
             <div className="mb-1 grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3.25rem] gap-2 text-center text-[11px] uppercase tracking-wide text-fl-tx2">
-              <span>Set</span><span>Previous</span><span>{bw || added ? '+Lb' : 'Lb'}</span><span>Reps</span><span className="sr-only">Done</span>
+              <span>Set</span><span>Previous</span><span>{`${bw || added ? '+' : ''}${unit === 'kg' ? 'Kg' : 'Lb'}`}</span><span>Reps</span><span className="sr-only">Done</span>
             </div>
             {rs.map((r, i) => {
               const pv = p?.sets[i] ?? p?.sets.at(-1);
@@ -793,13 +799,13 @@ export default function LogPage() {
                   <span className={`flex h-9 w-9 items-center justify-center rounded-[10px] text-sm font-bold ${r.done ? 'bg-fl-ok text-fl-on-ok' : r.state === 'failed' ? 'border-2 border-fl-bad text-fl-bad' : currentEx === ex.id && i === rs.findIndex(x => !x.done) ? 'border-2 border-fl-acc text-fl-acc' : 'border border-fl-field text-fl-tx2'}`}>{i + 1}</span>
                   {pv && session && !r.done ? (
                     <button type="button" onClick={() => setRow(ex.id, i, { weight: String(pv.weight), reps: String(pv.reps) })}
-                      aria-label={`Use last time: ${pv.weight} pounds for ${pv.reps} reps, for set ${i + 1}`}
+                      aria-label={`Use last time: ${pv.weight} ${longName(unit)} for ${pv.reps} reps, for set ${i + 1}`}
                       className="h-12 truncate rounded-lg text-center text-sm tabular-nums text-fl-tx2 underline decoration-dotted underline-offset-4">{pv.weight}×{pv.reps}</button>
                   ) : (
                     <span className="truncate text-center text-sm tabular-nums text-fl-tx2">{pv ? `${pv.weight}×${pv.reps}` : '-'}</span>
                   )}
                   <input
-                    aria-label={`${ex.exercise_name} set ${i + 1} weight in pounds`}
+                    aria-label={`${ex.exercise_name} set ${i + 1} weight in ${longName(unit)}`}
                     inputMode="decimal" disabled={!session} value={r.weight}
                     placeholder={bw && !t.weight && !pv?.weight ? 'BW' : t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
                     onChange={e => setRow(ex.id, i, { weight: clean(e.target.value) })}

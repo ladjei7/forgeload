@@ -39,7 +39,7 @@ export async function buildExport(): Promise<Export> {
   const clean = (v: unknown): unknown => Array.isArray(v) ? v.map(clean) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(strip(v as Row)).map(([k, x]) => [k, clean(x)])) : v;
   return {
     exported_at: new Date().toISOString(), app: 'Forgeload',
-    note: 'Your own plans, workouts and custom exercises. Weights are in pounds. The built-in exercise library is not included.',
+    note: 'Your own plans, workouts and custom exercises. Weights are stored and exported in pounds (kilogram entries are converted). The built-in exercise library is not included.',
     plans: clean(plans) as Row[], sessions: clean(sessions) as Row[], custom_exercises: clean(custom) as Row[], favorites_and_recents: clean(prefs) as Row[],
     training_preferences: clean(tprefs) as Row[], activity_log: clean(events) as Row[],
     schedules: clean(schedules) as Row[], schedule_answers: clean(answers) as Row[],

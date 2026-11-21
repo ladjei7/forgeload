@@ -1,3 +1,5 @@
+import { show, label, type Unit } from './units.ts';
+
 // Progress numbers, computed from finished workouts. Pure functions only (unit tested).
 //
 // "Strength estimate": the best set of a workout turned into one number, so that more weight and more
@@ -106,6 +108,7 @@ export function recentRecords(lifts: LiftProgress[], now = new Date(), days = 30
   return out.sort((a, b) => +b.point.date - +a.point.date);
 }
 
-export function setLabel(p: { weight: number; reps: number }, unit = 'lb'): string {
-  return p.weight > 0 ? `${p.weight} ${unit} × ${p.reps}` : `${p.reps} reps`;
+/** Weights are stored in pounds; shown in the person's unit. */
+export function setLabel(p: { weight: number; reps: number }, unit: Unit = 'lb'): string {
+  return p.weight > 0 ? `${show(p.weight, unit)} ${label(unit)} × ${p.reps}` : `${p.reps} reps`;
 }

@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 import { ui, Icon } from '../components/ui';
 import LiftChart from '../components/LiftChart';
-import { liftProgress, summary, recentRecords, setLabel, type PSession } from '../lib/progressStats';
+import { liftProgress, summary, recentRecords, setLabel as rawLabel, type PSession } from '../lib/progressStats';
+import { getUnit, show, type Unit } from '../lib/units';
 
 const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -13,6 +14,8 @@ export default function ProgressPage() {
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [unit] = useState<Unit>(() => getUnit());
+  const setLabel = (p: { weight: number; reps: number }) => rawLabel(p, unit);
 
   useEffect(() => {
     let alive = true;
@@ -114,7 +117,7 @@ export default function ProgressPage() {
                     </button>
                     {isOpen && (
                       <div className="pb-3">
-                        <LiftChart points={l.points} kind={l.kind} name={l.name} />
+                        <LiftChart points={l.points} kind={l.kind} name={l.name} unit={unit} />
                         <table className="mt-3 w-full text-sm tabular-nums">
                           <caption className="sr-only">{l.name}: best set each workout</caption>
                           <thead><tr className="text-left text-xs text-fl-tx2"><th className="py-1 font-medium">Date</th><th className="py-1 font-medium">Best set</th><th className="py-1 text-right font-medium">{l.kind === 'weight' ? 'Strength est.' : 'Reps'}</th></tr></thead>
@@ -123,7 +126,7 @@ export default function ProgressPage() {
                               <tr key={p.sessionId} className="border-t border-fl-line">
                                 <td className="py-1.5">{fmt(p.date)}</td>
                                 <td className="py-1.5">{setLabel(p)}{p.record && <span className="ml-1.5 text-xs font-semibold text-fl-ok">Record</span>}</td>
-                                <td className="py-1.5 text-right">{p.value}</td>
+                                <td className="py-1.5 text-right">{l.kind === 'weight' ? show(p.value, unit) : p.value}</td>
                               </tr>
                             ))}
                           </tbody>

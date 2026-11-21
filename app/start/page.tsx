@@ -9,6 +9,9 @@ import { createPlanFromTemplate } from '../lib/applyTemplate';
 import { applyComfort, type Comfort } from '../lib/comfort';
 import { supabase } from '../lib/supabase';
 import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
+import { applyAreas, applyFocus, AREAS, FOCUSES, type Area, type Focus } from '../lib/personalize';
+import { guessUnit, getUnit, setUnitLocal, type Unit } from '../lib/units';
+import { savePrefs } from '../lib/prefs';
 
 // Session length shown as the minutes themselves (upper end of the range).
 const Mins = ({ n }: { n: string }) => <span className="flex flex-col items-center leading-none"><span className="text-base font-bold">{n}</span><span className="mt-0.5 text-[10px] font-medium text-fl-tx2">min</span></span>;
@@ -16,24 +19,23 @@ const Mins = ({ n }: { n: string }) => <span className="flex flex-col items-cent
 type Choice<T> = { id: T; icon: ReactNode; title: string; sub: string };
 
 const DAYS: Choice<number>[] = [
-  { id: 1, icon: '1', title: '1 day', sub: 'Better than none. The plan rotates week to week.' },
-  { id: 2, icon: '2', title: '2 days', sub: 'Short on time? Still enough to make progress.' },
+  { id: 1, icon: '1', title: '1 day', sub: "A start. You'll still get stronger, just more slowly." },
+  { id: 2, icon: '2', title: '2 days', sub: 'Enough for real progress.' },
   { id: 3, icon: '3', title: '3 days', sub: 'A classic. Rest days built in.' },
   { id: 4, icon: '4', title: '4 days', sub: 'The sweet spot for most people.' },
   { id: 5, icon: '5', title: '5 days', sub: 'Committed. Plenty of volume.' },
   { id: 6, icon: '6', title: '6 days', sub: 'All in. Recovery matters here.' },
 ];
 const EXP: Choice<Experience>[] = [
-  { id: 'brand_new', icon: <LevelBars level={1} />, title: 'Brand new', sub: 'I have never really lifted' },
-  { id: 'new', icon: <LevelBars level={2} />, title: 'Beginner', sub: 'Under about 6 months of steady training' },
-  { id: 'some', icon: <LevelBars level={3} />, title: 'Intermediate', sub: 'About 6 months to 2 years' },
-  { id: 'experienced', icon: <LevelBars level={4} />, title: 'Advanced', sub: 'More than 2 years, I know my way around' },
+  { id: 'new', icon: <LevelBars level={1} />, title: 'Beginner', sub: 'New to lifting, or under about 6 months' },
+  { id: 'some', icon: <LevelBars level={2} />, title: 'Intermediate', sub: 'About 6 months to 2 years' },
+  { id: 'experienced', icon: <LevelBars level={3} />, title: 'Advanced', sub: 'More than 2 years, I know my way around' },
 ];
 const GOALS: Choice<Goal>[] = [
   { id: 'muscle', icon: <Icon name="grow" size={26} />, title: 'Build muscle', sub: 'Size and shape' },
   { id: 'strength', icon: <Icon name="barbell" size={26} />, title: 'Get stronger', sub: 'Heavier weight on the big lifts' },
   { id: 'fat_loss', icon: <Icon name="flame" size={26} />, title: 'Lose body fat', sub: 'While keeping or building muscle' },
-  { id: 'fitness', icon: <Icon name="heart" size={26} />, title: 'Improve general fitness', sub: 'Feel stronger and fitter overall' },
+  { id: 'fitness', icon: <Icon name="heart" size={26} />, title: 'Get fit and healthy', sub: 'Stronger, more energy, no specific target' },
 ];
 const TIMES: Choice<Minutes>[] = [
   { id: 25, icon: <Mins n="30" />, title: '20 to 30 minutes', sub: 'Quick and focused' },
@@ -49,14 +51,27 @@ const COMFORTS: Choice<Comfort>[] = [
   { id: 'unsure', icon: <Icon name="help" size={26} />, title: "I'm not sure, choose for me", sub: 'Recommend an approachable starting point.' },
 ];
 
-const STEPS = ['days', 'experience', 'goal', 'time', 'comfort'] as const;
+const STEPS = ['days', 'experience', 'goal', 'focus', 'time', 'comfort', 'areas'] as const;
 const QUESTION = {
   days: ['How many days per week can you realistically train?', 'Be realistic. A plan you can keep beats a perfect one.'],
   experience: ['How experienced are you with strength training?', 'This helps us avoid starting you too hard. Not sure? Pick the lower one.'],
   goal: ["What's your main fitness goal?", 'This sets your rep ranges. You can change it later.'],
   time: ['How much time can you spend per workout?', 'We will fit the plan to your time.'],
   comfort: ['What exercises would you feel most comfortable starting with?', 'This only picks your starting exercises. You can change it any time, and you can swap any exercise later.'],
+  focus: ['Anything you want more of?', 'Pick up to two, or keep it balanced. We add a little extra work there.'],
+  areas: ['Anything we should go easy on?', "Pick any that bother you and we'll start with gentler exercises for them. You can change this in Settings."],
 } as const;
+
+/** Multi-select option: toggles, never advances by itself. */
+function Toggle({ title, sub, on, toggle }: { title: string; sub?: string; on: boolean; toggle: () => void }) {
+  return (
+    <button onClick={toggle} aria-pressed={on}
+      className={`flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-fl-acc/60 ${on ? 'border-fl-acc bg-fl-acc/10' : 'border border-fl-line bg-fl-s1 hover:bg-fl-s2'}`}>
+      <span aria-hidden="true" className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${on ? 'border-fl-acc bg-fl-acc text-fl-on-acc' : 'border-fl-field'}`}>{on && <Icon name="check" size={16} />}</span>
+      <span className="min-w-0"><span className="block text-lg font-semibold">{title}</span>{sub && <span className="block text-sm text-fl-tx2">{sub}</span>}</span>
+    </button>
+  );
+}
 
 function Card<T extends string | number>({ c, on, pick }: { c: Choice<T>; on: boolean; pick: (v: T) => void }) {
   return (
@@ -100,7 +115,12 @@ function StartFlow({ change }: { change: boolean }) {
   const [goal, setGoal] = useState<Goal | ''>(() => valid(saved.goal, GOALS) ?? '');
   const [mins, setMins] = useState<Minutes | 0>(() => valid(saved.mins, TIMES) ?? 0);
   const [comfort, setComfort] = useState<Comfort | ''>(() => valid(saved.comfort, COMFORTS) ?? '');
-  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify({ step, days, exp, goal, mins, comfort })); } catch { /* optional */ } }, [KEY, step, days, exp, goal, mins, comfort]);
+  const okList = <T extends string,>(v: unknown, opts: { id: T }[]) => (Array.isArray(v) ? v.filter((x): x is T => opts.some(o => o.id === x)) : []);
+  const [focus, setFocus] = useState<Focus[]>(() => okList(saved.focus, FOCUSES).slice(0, 2));
+  const [areas, setAreas] = useState<Area[]>(() => okList(saved.areas, AREAS));
+  const [unit, setUnit] = useState<Unit>(() => (saved.unit === 'kg' || saved.unit === 'lb' ? saved.unit : change ? getUnit() : guessUnit(typeof navigator !== 'undefined' ? navigator.language : undefined)));
+  const [focusHint, setFocusHint] = useState(false);
+  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify({ step, days, exp, goal, mins, comfort, focus, areas, unit })); } catch { /* optional */ } }, [KEY, step, days, exp, goal, mins, comfort, focus, areas, unit]);
   const [current, setCurrent] = useState<{ name: string; workouts: number; unfinished: boolean } | null>(null);
   useEffect(() => {
     if (!change) return;
@@ -112,12 +132,14 @@ function StartFlow({ change }: { change: boolean }) {
         const [{ count }, { data: open }, { data: prefs }] = await Promise.all([
           supabase.from('workout_days').select('id', { count: 'exact', head: true }).eq('plan_id', cur.id),
           supabase.from('workout_sessions').select('id').is('completed_at', null).limit(1),
-          supabase.from('user_training_prefs').select('comfort, session_minutes').maybeSingle(),
+          supabase.from('user_training_prefs').select('*').maybeSingle(),
         ]);
         setCurrent({ name: cur.name, workouts: count ?? 0, unfinished: (open ?? []).length > 0 });
         // Fill in what the account remembers if this device doesn't.
-        const p = prefs as { comfort: string | null; session_minutes: number | null } | null;
+        const p = prefs as { comfort: string | null; session_minutes: number | null; pain_areas?: string[]; focus?: string[] } | null;
         if (p?.comfort) setComfort(c => c || (valid(p.comfort, COMFORTS) ?? ''));
+        if (p?.pain_areas?.length) setAreas(a => (a.length ? a : okList(p.pain_areas, AREAS)));
+        if (p?.focus?.length) setFocus(f => (f.length ? f : okList(p.focus, FOCUSES).slice(0, 2)));
         if (p?.session_minutes) setMins(m => m || (TIMES.reduce((a, b) => Math.abs(b.id - p.session_minutes!) < Math.abs(a.id - p.session_minutes!) ? b : a).id));
       } catch { /* the questions still work without this */ }
     })();
@@ -131,7 +153,12 @@ function StartFlow({ change }: { change: boolean }) {
   const chosenId = picked || rec?.primary || '';
   const base = TEMPLATES.find(t => t.id === chosenId);
   const adapted = base && comfort ? applyComfort(base, comfort) : null;
-  const tpl = adapted && goal && mins ? tailorTemplate(adapted.tpl, goal, mins) : null;
+  // Order: comfort (which version of each lift), areas to go easy on, then goal and time, then focus.
+  const gentle = adapted ? applyAreas(adapted.tpl, areas) : null;
+  const tailored = gentle && goal && mins ? tailorTemplate(gentle.tpl, goal, mins) : null;
+  const focused = tailored ? applyFocus(tailored, focus) : null;
+  const tpl = focused?.tpl ?? null;
+  const insteadOf = (name: string) => gentle?.swapped?.[name] ?? adapted?.swapped[name];
 
   function answer(setter: () => void) { setter(); setPicked(''); setTimeout(() => setStep(s => s + 1), 180); }
 
@@ -141,10 +168,10 @@ function StartFlow({ change }: { change: boolean }) {
     const res = await createPlanFromTemplate(tpl);
     if ('error' in res) { setBusy(false); return setError('Could not create the plan: ' + res.error); }
     await setCurrentPlan(res.planId); // best effort beyond this device; the plan exists either way
-    try { localStorage.setItem('fl-comfort', comfort); localStorage.setItem('fl-answers', JSON.stringify({ exp, goal, mins, comfort })); localStorage.removeItem(KEY); } catch { /* optional */ }
+    setUnitLocal(unit);
+    try { localStorage.setItem('fl-comfort', comfort); localStorage.setItem('fl-answers', JSON.stringify({ exp, goal, mins, comfort, focus, areas, unit })); localStorage.removeItem(KEY); } catch { /* optional */ }
     try { // best effort: the plan is already created even if preferences cannot be saved
-      const { data: u } = await supabase.auth.getUser();
-      if (u.user && comfort) await supabase.from('user_training_prefs').upsert({ user_id: u.user.id, comfort, session_minutes: mins || null, updated_at: new Date().toISOString() });
+      if (comfort) await savePrefs({ comfort, session_minutes: mins || null, pain_areas: areas, focus, unit });
     } catch { /* optional */ }
     router.push('/');
   }
@@ -171,6 +198,20 @@ function StartFlow({ change }: { change: boolean }) {
           {key === 'goal' && GOALS.map(c => <Card key={c.id} c={c} on={goal === c.id} pick={v => answer(() => setGoal(v))} />)}
           {key === 'time' && TIMES.map(c => <Card key={c.id} c={c} on={mins === c.id} pick={v => answer(() => setMins(v))} />)}
           {key === 'comfort' && COMFORTS.map(c => <Card key={c.id} c={c} on={comfort === c.id} pick={v => answer(() => setComfort(v))} />)}
+          {key === 'focus' && <>
+            {FOCUSES.map(f => <Toggle key={f.id} title={f.title} sub={f.sub} on={focus.includes(f.id)}
+              toggle={() => {
+                if (focus.includes(f.id)) { setFocus(focus.filter(y => y !== f.id)); setFocusHint(false); }
+                else if (focus.length >= 2) setFocusHint(true);
+                else { setFocus([...focus, f.id]); setFocusHint(false); }
+              }} />)}
+            {focusHint && <p role="status" className="text-sm text-fl-tx2">Pick up to two. Tap one to remove it first.</p>}
+            <button onClick={() => setStep(s => s + 1)} className="h-14 w-full rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc">{focus.length ? 'Continue' : 'Keep it balanced'}</button>
+          </>}
+          {key === 'areas' && <>
+            {AREAS.map(a => <Toggle key={a.id} title={a.title} on={areas.includes(a.id)} toggle={() => setAreas(x => x.includes(a.id) ? x.filter(y => y !== a.id) : [...x, a.id])} />)}
+            <button onClick={() => setStep(s => s + 1)} className="h-14 w-full rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc">{areas.length ? 'Continue' : 'Nothing to avoid'}</button>
+          </>}
         </div>
         <div className="mt-6 flex items-center justify-between text-sm">
           {step > 0 ? <button onClick={() => setStep(step - 1)} className="h-11 px-2 text-fl-tx2">← Back</button> : <span />}
@@ -180,7 +221,7 @@ function StartFlow({ change }: { change: boolean }) {
     );
   }
 
-  const chips = [`${days} ${days === 1 ? "day" : "days"} a week`, EXP.find(e => e.id === exp)?.title, GOALS.find(g => g.id === goal)?.title, TIMES.find(t => t.id === mins)?.title, COMFORTS.find(c => c.id === comfort)?.title];
+  const chips = [`${days} ${days === 1 ? "day" : "days"} a week`, EXP.find(e => e.id === exp)?.title, GOALS.find(g => g.id === goal)?.title, ...FOCUSES.filter(f => focus.includes(f.id)).map(f => `More ${f.title.toLowerCase()}`), TIMES.find(t => t.id === mins)?.title, COMFORTS.find(c => c.id === comfort)?.title, ...(areas.length ? [`Go easy: ${AREAS.filter(a => areas.includes(a.id)).map(a => a.title.toLowerCase()).join(', ')}`] : [])];
   const others = rec ? [rec.primary, ...rec.alternatives].filter(id => id !== chosenId) : [];
 
   return (
@@ -199,6 +240,8 @@ function StartFlow({ change }: { change: boolean }) {
             <p><span className="font-semibold text-fl-tx">Your goal. </span>{GOAL_NOTE[goal as Goal]}</p>
             <p><span className="font-semibold text-fl-tx">Your time. </span>{TIME_NOTE[mins as Minutes]}</p>
             {adapted && adapted.notes.length > 0 && <p><span className="font-semibold text-fl-tx">Your comfort. </span>{adapted.notes.join(' ')}</p>}
+            {focused && focused.notes.length > 0 && <p><span className="font-semibold text-fl-tx">Your focus. </span>{focused.notes.join(' ')}</p>}
+            {gentle && gentle.notes.length > 0 && <p><span className="font-semibold text-fl-tx">Going easy. </span>{gentle.notes.join(' ')}</p>}
           </div>
           <div className="mb-4 space-y-3">
             {tpl.days.map((d, i) => (
@@ -207,7 +250,7 @@ function StartFlow({ change }: { change: boolean }) {
                   <span className="font-semibold">{d.name}</span><span className="text-sm text-fl-tx2">{d.exercises.length} exercises</span>
                 </summary>
                 <ul className="mt-2 space-y-1 text-sm">
-                  {d.exercises.map((e, j) => <li key={j} className="flex justify-between gap-3"><span>{e[0]}{adapted?.swapped[e[0]] && <span className="block text-xs text-fl-tx2">Instead of {adapted.swapped[e[0]]}</span>}</span><span className="shrink-0 text-fl-tx2">{e[1]} × {e[2]}-{e[3]}</span></li>)}
+                  {d.exercises.map((e, j) => <li key={j} className="flex justify-between gap-3"><span>{e[0]}{insteadOf(e[0]) && <span className="block text-xs text-fl-tx2">Instead of {insteadOf(e[0])}</span>}</span><span className="shrink-0 text-fl-tx2">{e[1]} × {e[2]}-{e[3]}</span></li>)}
                 </ul>
               </details>
             ))}
@@ -221,6 +264,15 @@ function StartFlow({ change }: { change: boolean }) {
           {change && current?.unfinished && (
             <p role="alert" className="mb-3 text-sm text-fl-bad">⚠ You have an unfinished workout. <Link href="/log" className="underline">Finish or discard it</Link> before switching plans.</p>
           )}
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-fl-line bg-fl-s1 px-4 py-3">
+            <span className="font-semibold">Weights in</span>
+            <div role="radiogroup" aria-label="Weight unit" className="flex rounded-xl bg-fl-s2 p-1">
+              {(['lb', 'kg'] as const).map(u => (
+                <button key={u} role="radio" aria-checked={unit === u} onClick={() => setUnit(u)}
+                  className={`h-10 w-16 rounded-lg text-sm font-semibold ${unit === u ? 'bg-fl-s1 text-fl-tx shadow' : 'text-fl-tx2'}`}>{u === 'lb' ? 'Pounds' : 'Kilos'}</button>
+              ))}
+            </div>
+          </div>
           {error && <p role="alert" className="mb-3 text-sm text-fl-bad">{error}</p>}
           <button onClick={create} disabled={busy || (change && !!current?.unfinished)} className="h-14 w-full rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc disabled:opacity-60">
             {busy ? (change ? 'Switching...' : 'Creating...') : change ? 'Switch to this plan' : 'Create this plan'}

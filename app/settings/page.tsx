@@ -6,6 +6,9 @@ import { supabase } from '../lib/supabase';
 import { pendingOnDevice } from '../lib/outboxSync';
 import { buildExport, setsCsv, download } from '../lib/exportData';
 import type { Comfort } from '../lib/comfort';
+import { AREAS, type Area } from '../lib/personalize';
+import { getUnit, setUnitLocal, type Unit } from '../lib/units';
+import { savePrefs } from '../lib/prefs';
 
 const COMFORTS: { id: Comfort; title: string; sub: string }[] = [
   { id: 'machines', title: 'Mostly machines', sub: 'Guided movements while getting comfortable.' },
@@ -36,13 +39,31 @@ export default function SettingsPage() {
     if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); else document.documentElement.removeAttribute('data-theme');
   }
 
+  const [unit, setUnit] = useState<Unit>(() => getUnit());
+  const [areas, setAreas] = useState<Area[]>([]);
+  const [aboutMsg, setAboutMsg] = useState('');
+  async function saveUnit(u: Unit) {
+    const before = unit; setUnit(u); setUnitLocal(u); setAboutMsg('');
+    const r = await savePrefs({ unit: u });
+    if (r.error) { setUnit(before); setUnitLocal(before); return setErr('Could not save that setting. Check your connection and try again.'); }
+    setAboutMsg(`Weights now show in ${u === 'kg' ? 'kilograms' : 'pounds'}. Everything you logged is converted; nothing is lost.`);
+  }
+  async function toggleArea(a: Area) {
+    const next = areas.includes(a) ? areas.filter(x => x !== a) : [...areas, a];
+    const before = areas; setAreas(next); setAboutMsg('');
+    const r = await savePrefs({ pain_areas: next });
+    if (r.error) { setAreas(before); return setErr('Could not save that setting. Check your connection and try again.'); }
+    setAboutMsg('Saved. Used the next time we build you a plan. Your current plan is unchanged; swap any exercise from the workout screen.');
+  }
   const [askEffort, setAskEffort] = useState(true);
   const [trackRir, setTrackRir] = useState(false);
   const [effortMsg, setEffortMsg] = useState('');
   useEffect(() => {
-    supabase.from('user_training_prefs').select('comfort, ask_effort, track_rir').maybeSingle().then(({ data }) => {
+    supabase.from('user_training_prefs').select('*').maybeSingle().then(({ data }) => {
       if (data?.comfort) setComfort(data.comfort as Comfort);
       if (data) { setAskEffort(data.ask_effort !== false); setTrackRir(data.track_rir === true); }
+      if (Array.isArray(data?.pain_areas)) setAreas((data.pain_areas as string[]).filter((a): a is Area => AREAS.some(x => x.id === a)));
+      if (data?.unit === 'kg' || data?.unit === 'lb') { setUnit(data.unit); setUnitLocal(data.unit); }
     });
   }, []);
 
@@ -51,9 +72,7 @@ export default function SettingsPage() {
     if (patch.ask_effort !== undefined) setAskEffort(patch.ask_effort);
     if (patch.track_rir !== undefined) setTrackRir(patch.track_rir);
     setEffortMsg('');
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) return;
-    const { error } = await supabase.from('user_training_prefs').upsert({ user_id: u.user.id, ...patch, updated_at: new Date().toISOString() });
+    const { error } = await savePrefs(patch);
     if (error) { setAskEffort(before.askEffort); setTrackRir(before.trackRir); return setErr('Could not save that setting. Check your connection and try again.'); }
     setEffortMsg('Saved. Applies from your next exercise.');
   }
@@ -109,6 +128,25 @@ export default function SettingsPage() {
         <h2 className="mb-1 text-lg font-bold">Training days</h2>
         <p className="mb-3 text-sm text-fl-tx2">Want to train more or fewer days a week? We&apos;ll build a new plan to match. Your old plan and everything you&apos;ve logged are kept.</p>
         <Link href="/start?change=1" className="flex h-12 items-center justify-center rounded-xl bg-fl-s2 font-semibold">Change training days</Link>
+      </section>
+
+      <section className={card}>
+        <h2 className="mb-1 text-lg font-bold">Units</h2>
+        <div role="radiogroup" aria-label="Weight unit" className="mt-2 flex rounded-xl bg-fl-s2 p-1">
+          {(['lb', 'kg'] as const).map(u => (
+            <button key={u} role="radio" aria-checked={unit === u} onClick={() => unit !== u && saveUnit(u)}
+              className={`h-11 flex-1 rounded-lg font-semibold ${unit === u ? 'bg-fl-s1 text-fl-tx shadow' : 'text-fl-tx2'}`}>{u === 'lb' ? 'Pounds (lb)' : 'Kilograms (kg)'}</button>
+          ))}
+        </div>
+        <h2 className="mb-1 mt-5 text-lg font-bold">Go easy on</h2>
+        <p className="mb-3 text-sm text-fl-tx2">Areas that bother you. New plans start with gentler exercises for them. This isn&apos;t medical advice.</p>
+        <div className="flex flex-wrap gap-2">
+          {AREAS.map(a => (
+            <button key={a.id} aria-pressed={areas.includes(a.id)} onClick={() => toggleArea(a.id)}
+              className={`h-10 rounded-full border px-4 text-sm font-semibold ${areas.includes(a.id) ? 'border-fl-acc bg-fl-tint text-fl-tx' : 'border-fl-line bg-fl-s2 text-fl-tx2'}`}>{a.title}</button>
+          ))}
+        </div>
+        {aboutMsg && <p role="status" className="mt-3 text-sm text-fl-ok">{aboutMsg}</p>}
       </section>
 
       <section className={card}>
