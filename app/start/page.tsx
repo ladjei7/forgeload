@@ -3,13 +3,13 @@ import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Icon, LevelBars } from '../components/ui';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { TEMPLATES } from '../lib/templates';
-import { recommendPlan, tailorTemplate, GOAL_NOTE, TIME_NOTE, type Experience, type Goal, type Minutes } from '../lib/recommend';
+import { TEMPLATES, forExperience, blurbFor } from '../lib/templates';
+import { recommendPlan, tailorTemplate, fitToTime, GOAL_NOTE, TIME_NOTE, type Experience, type Goal, type Minutes } from '../lib/recommend';
 import { createPlanFromTemplate } from '../lib/applyTemplate';
 import { applyComfort, type Comfort } from '../lib/comfort';
 import { supabase } from '../lib/supabase';
 import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
-import { applyAreas, applyFocus, detectAreas, AREAS, FOCUSES, type Focus } from '../lib/personalize';
+import { applyAreas, applyFocus, inFocus, detectAreas, AREAS, FOCUSES, type Focus } from '../lib/personalize';
 import { getUnit, setUnitLocal, type Unit } from '../lib/units';
 import { savePrefs } from '../lib/prefs';
 
@@ -154,13 +154,16 @@ function StartFlow({ change }: { change: boolean }) {
   const done = step >= STEPS.length;
   const rec = days && exp ? recommendPlan(days, exp) : null;
   const chosenId = picked || rec?.primary || '';
-  const base = TEMPLATES.find(t => t.id === chosenId);
+  const found = TEMPLATES.find(t => t.id === chosenId);
+  const base = found && exp ? forExperience(found, exp) : found;
   const adapted = base && comfort ? applyComfort(base, comfort) : null;
-  // Order: comfort (which version of each lift), areas to go easy on, then goal and time, then focus.
-  const gentle = adapted ? applyAreas(adapted.tpl, areas) : null;
-  const tailored = gentle && goal && mins ? tailorTemplate(gentle.tpl, goal, mins) : null;
-  const focused = tailored ? applyFocus(tailored, focus) : null;
-  const tpl = focused?.tpl ?? null;
+  // Order: experience, comfort (which version of each lift), goal and time (what fits), then areas to
+  // go easy on (so the note only talks about exercises that are really in the plan), then focus.
+  const tailored = adapted && goal && mins ? tailorTemplate(adapted.tpl, goal, mins) : null;
+  const gentle = tailored ? applyAreas(tailored, areas) : null;
+  const focused = gentle ? applyFocus(gentle.tpl, focus) : null;
+  // Swaps and focus sets change the length a little: one last pass keeps every workout in the picked time.
+  const tpl = focused && mins ? fitToTime(focused.tpl, mins as Minutes, n => inFocus(n, focus)) : null;
   const insteadOf = (name: string) => gentle?.swapped?.[name] ?? adapted?.swapped[name];
 
   function answer(setter: () => void) { setter(); setPicked(''); setTimeout(() => setStep(s => s + 1), 180); }
@@ -251,7 +254,7 @@ function StartFlow({ change }: { change: boolean }) {
         <>
           <div className="text-xs uppercase tracking-wide text-fl-acc">{picked && picked !== rec.primary ? 'Your pick' : 'Built for you'}</div>
           <h1 className="mb-1 mt-1 text-3xl font-bold leading-tight">{tpl.name}</h1>
-          <p className="mb-4 text-fl-tx2">{tpl.blurb}</p>
+          <p className="mb-4 text-fl-tx2">{blurbFor(tpl, days || tpl.days.length)}</p>
           <div className="mb-4 space-y-2 rounded-2xl bg-fl-s1 border border-fl-line p-4 text-sm leading-relaxed text-fl-tx2">
             <p><span className="font-semibold text-fl-tx">Why this split. </span>{rec.why}</p>
             <p><span className="font-semibold text-fl-tx">Your goal. </span>{GOAL_NOTE[goal as Goal]}</p>
@@ -272,7 +275,13 @@ function StartFlow({ change }: { change: boolean }) {
               </details>
             ))}
           </div>
-          {change && current && (
+          {change && current && current.name === tpl.name && (
+            <div className="mb-4 rounded-2xl border border-fl-acc/60 bg-fl-tint p-4 text-sm leading-relaxed">
+              <p className="font-semibold">This is the same kind of plan you have now.</p>
+              <p className="mt-1 text-fl-tx2">Training {days} {days === 1 ? 'day' : 'days'} a week doesn&apos;t change the workouts, only how often you do them: you just do the next one each time. You can keep your current plan. Switch only if you changed other answers and want them used.</p>
+            </div>
+          )}
+          {change && current && current.name !== tpl.name && (
             <div className="mb-4 rounded-2xl border border-fl-field bg-fl-s2 p-4 text-sm leading-relaxed">
               <p className="font-semibold">You&apos;ll switch from {current.name} ({current.workouts} {current.workouts === 1 ? 'workout' : 'workouts'}) to {tpl.name} ({tpl.days.length} {tpl.days.length === 1 ? 'workout' : 'workouts'}).</p>
               <p className="mt-1 text-fl-tx2">You start at workout 1 of the new plan. Your old plan and everything you&apos;ve logged are kept, and your weights carry over to the same exercises. You can switch back any time on the Plan tab.</p>

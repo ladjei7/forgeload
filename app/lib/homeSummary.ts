@@ -54,11 +54,13 @@ export const todayIndex = (now: Date) => (now.getDay() + 6) % 7;
 
 /** Rough minutes for a planned workout: work time plus the default rest after each set except the last. Shown as "about". */
 export function estimateMinutes(plan: { sets: number; repMax: number }[]): number {
+  const est = RULES.durationEstimate;
   let sec = 0, sets = 0;
-  for (const p of plan) { sets += p.sets; sec += p.sets * (RULES.durationEstimate.secondsPerSetWork + defaultRestSeconds(p.repMax)); }
+  for (const p of plan) { sets += p.sets; sec += est.secondsSetupPerExercise + p.sets * (est.secondsPerSetWork + defaultRestSeconds(p.repMax)); }
   if (sets === 0) return 0;
   const last = plan[plan.length - 1];
   sec -= defaultRestSeconds(last.repMax); // no rest after the final set
+  sec += est.secondsWarmup;
   return Math.max(5, Math.round(sec / 60 / 5) * 5);
 }
 

@@ -16,7 +16,15 @@ export const RULES = {
   /** Default rest by top of rep range. Lifter can adjust per timer. */
   restSeconds: { heavy: 180, moderate: 120, light: 90, heavyMaxReps: 6, moderateMaxReps: 10 },
   /** Rough session-length estimate shown before a workout. Labeled "about", never used for scoring. */
-  durationEstimate: { secondsPerSetWork: 40 },
+  durationEstimate: {
+    secondsPerSetWork: 40,
+    secondsSetupPerExercise: 60, // walking to the station, setting the weight
+    secondsWarmup: 180,          // a couple of light sets before the first lift
+  },
+  /** What each session-length answer aims for, in estimated minutes (warm-up included). */
+  sessionTargets: { 25: [20, 30], 40: [30, 45], 55: [45, 60], 75: [60, 80], 45: [35, 45], 60: [50, 65], 90: [70, 95] } as Record<number, readonly [number, number]>,
+  /** Most working sets per exercise when filling a longer session. */
+  maxSetsPerExercise: 5,
 } as const;
 
 export const SWAP_REASONS = [

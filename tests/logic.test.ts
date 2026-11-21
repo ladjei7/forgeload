@@ -140,7 +140,7 @@ test('tailoring: goal and session length change reps and exercise count, never t
   const base = TEMPLATES.find(t => t.id === 'ul2')!;
   const firstBefore = JSON.stringify(base.days[0].exercises);
   const s = tailorTemplate(base, 'strength', 45);
-  assert.equal(s.days[0].exercises.length, 4);
+  assert.ok(s.days[0].exercises.length >= 3 && s.days[0].exercises.length <= 4);
   assert.deepEqual([s.days[0].exercises[0][2], s.days[0].exercises[0][3]], [4, 6]);
   assert.deepEqual([s.days[0].exercises[1][2], s.days[0].exercises[1][3]], [4, 6]);
   assert.equal(s.days[0].exercises[2][2], base.days[0].exercises[2][2]);
@@ -148,7 +148,8 @@ test('tailoring: goal and session length change reps and exercise count, never t
   assert.deepEqual([b.days[0].exercises[0][2], b.days[0].exercises[0][3]], [5, 8]);
   assert.equal(b.days[0].exercises.length, base.days[0].exercises.length);
   const m = tailorTemplate(base, 'muscle', 60);
-  assert.deepEqual(m.days, base.days);
+  assert.deepEqual(m.days.map(d => d.exercises.map(e => e[0])), base.days.map(d => d.exercises.map(e => e[0])), 'an hour keeps every exercise');
+  assert.ok(m.days.every(d => d.exercises.every(e => e[2] >= 6)), 'building muscle: nothing below 6 reps');
   assert.equal(JSON.stringify(base.days[0].exercises), firstBefore);
   for (const d of s.days) for (const e of d.exercises) assert.ok(e[2] <= e[3] && e[1] >= 1);
 });
@@ -164,7 +165,7 @@ test('onboarding v2: 1 day, brand new, new goals and session lengths', async () 
   const fit = tailorTemplate(tpl, 'fitness', 75) as { days: { exercises: [string, number, number, number][] }[] };
   assert.ok(fit.days[0].exercises.every(e => e[2] >= 8 && e[3] > e[2]), 'general fitness uses 8+ reps');
   const fat = tailorTemplate(tpl, 'fat_loss', 75) as { days: { exercises: [string, number, number, number][] }[] };
-  assert.deepEqual(fat.days[0].exercises[0], ['Squat', 3, 5, 8], 'fat loss keeps the muscle-building rep ranges');
+  assert.deepEqual([fat.days[0].exercises[0][2], fat.days[0].exercises[0][3]], [6, 10], 'fat loss uses the muscle-building rep ranges');
 });
 
 test('working weight: the weight used most; later wins a tie (persona test: "Too heavy" then lighter)', () => {
@@ -181,4 +182,38 @@ test('working weight: the weight used most; later wins a tie (persona test: "Too
   assert.equal(workingWeight(sets([225, 5], [225, 5], [185, 8])), 225);
   assert.deepEqual(workingSet(sets([25, 10], [30, 5], [30, 6])), { weight: 30, reps: 6 });
   assert.equal(workingSet([]), null);
+});
+
+test('persona test: session length is what the person picked (estimate includes warm-up)', async () => {
+  const { estimateMinutes } = await import('../app/lib/homeSummary.ts');
+  const { RULES } = await import('../app/lib/rules.ts');
+  const { forExperience } = await import('../app/lib/templates.ts');
+  const { applyComfort } = await import('../app/lib/comfort.ts');
+  for (const tpl of TEMPLATES) for (const exp of ['new', 'some'] as const) for (const c of ['machines', 'all'] as const)
+    for (const goal of ['muscle', 'strength', 'fat_loss'] as const) for (const mins of [25, 40, 55, 75] as const) {
+      const t = tailorTemplate(applyComfort(forExperience(tpl, exp), c).tpl, goal, mins);
+      const [lo, hi] = RULES.sessionTargets[mins];
+      for (const d of t.days) {
+        const m = estimateMinutes(d.exercises.map(e => ({ sets: e[1], repMax: e[3] >= 30 ? 15 : e[3] })));
+        assert.ok(m >= lo - 5 && m <= hi, `${tpl.id} ${exp} ${c} ${goal} ${mins}: ${d.name} is about ${m} min`);
+      }
+    }
+});
+
+test('persona test: lettered workouts differ; beginners keep the main lifts of workout A', async () => {
+  const { forExperience } = await import('../app/lib/templates.ts');
+  for (const tpl of TEMPLATES) {
+    const sig = (d: { exercises: [string, number, number, number][] }) => d.exercises.map(e => e[0]).join('|');
+    for (const exp of ['new', 'experienced']) {
+      const t = forExperience(tpl, exp);
+      const byBase = new Map<string, string[]>();
+      for (const d of t.days) { const k = d.name.replace(/ [A-C]$/, ''); byBase.set(k, [...(byBase.get(k) ?? []), sig(d)]); }
+      for (const [k, sigs] of byBase) if (sigs.length > 1) assert.equal(new Set(sigs).size, sigs.length, `${tpl.id} ${exp}: ${k} workouts are all the same`);
+    }
+    const n = forExperience(tpl, 'new');
+    for (const d of n.days) {
+      const a = n.days.find(x => x.name === d.name.replace(/ [B-C]$/, ' A'));
+      if (a && a !== d) assert.deepEqual(d.exercises.slice(0, 2).map(e => e[0]), a.exercises.slice(0, 2).map(e => e[0]), `${tpl.id}: beginner ${d.name} keeps A's main lifts`);
+    }
+  }
 });

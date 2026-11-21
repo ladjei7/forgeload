@@ -68,9 +68,8 @@ test('injuries in the person\'s own words map to body areas', () => {
 test('hips and ankles: squats and lunges move to the leg press', () => {
   const t = { id: 't', name: 'T', blurb: '', days: [{ name: 'Lower', exercises: [['Barbell Back Squat', 3, 6, 10], ['Dumbbell Lunge', 3, 8, 12], ['Leg Curl', 3, 10, 15], ['Standing Calf Raise', 3, 10, 15]] }] } as PlanTemplate;
   const r = applyAreas(t, ['ankles']);
-  // lunge: both gentler options already used -> dropped (4 -> 3); calf raise: nothing gentler and the workout can't go below 3 -> kept with a note
-  assert.deepEqual(r.tpl.days[0].exercises.map(e => e[0]), ['Leg Press', 'Leg Curl', 'Standing Calf Raise']);
-  assert.ok(r.notes.some(n => /no gentler option/.test(n)));
+  // lunge: leg press and leg curl already used -> leg extension; calf raise: nothing gentler and the workout can spare it -> dropped (4 -> 3)
+  assert.deepEqual(r.tpl.days[0].exercises.map(e => e[0]), ['Leg Press', 'Leg Extension', 'Leg Curl']);
   assert.match(r.notes.at(-1)!, /Rest comes first/);
 });
 

@@ -7,7 +7,7 @@ import HowTo from '../components/HowTo';
 import ScheduleEditor from '../components/ScheduleEditor';
 import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
 import { logEvent } from '../lib/events';
-import { TEMPLATES } from '../lib/templates';
+import { TEMPLATES, forExperience } from '../lib/templates';
 import { createPlanFromTemplate } from '../lib/applyTemplate';
 import { applyComfort, type Comfort } from '../lib/comfort';
 import { ui, Icon, Notice } from '../components/ui';
@@ -113,7 +113,10 @@ export default function PlanPage() {
       const c = (data?.comfort ?? localStorage.getItem('fl-comfort')) as Comfort | null;
       if (c === 'machines' || c === 'mixed' || c === 'all' || c === 'unsure') comfort = c;
     } catch { /* keep the safe default */ }
-    const res = await createPlanFromTemplate(applyComfort(tpl, comfort).tpl, { current: plans.length === 0 });
+    // Newer lifters keep workout A's main lifts in B and C (from their setup answers on this device).
+    let exp = 'some';
+    try { exp = (JSON.parse(localStorage.getItem('fl-answers') ?? '{}') as { exp?: string }).exp ?? 'some'; } catch { /* default */ }
+    const res = await createPlanFromTemplate(applyComfort(forExperience(tpl, exp), comfort).tpl, { current: plans.length === 0 });
     setBusy(false);
     if ('error' in res) return setMessage('Error: ' + res.error);
     await loadPlans(); setPlanId(res.planId);

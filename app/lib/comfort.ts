@@ -17,6 +17,7 @@ export const LEVEL: Record<string, Level> = {
   // replacements
   'Dumbbell Shoulder Press': 2, 'Dumbbell Bench Press': 2, 'Dumbbell Romanian Deadlift': 2, 'Single-Arm Dumbbell Row': 2, 'Dumbbell Goblet Squat': 2,
   'Machine Shoulder Press': 1, 'Machine Chest Press': 1, 'Machine Back Extension': 1, 'Chest-Supported Machine Row': 1, 'Hack Squat': 1, 'Close Grip Lat Pulldown': 1,
+  'Dumbbell Lunge': 2,
   'Cable Chest Press': 1, 'Cable Curl': 1, 'Cable Hammer Curl': 1, 'Cable Fly': 1, 'Cable Lateral Raise': 1, 'Cable Crunch': 1, 'Cable Tricep Pushdown': 1,
 };
 
@@ -34,6 +35,9 @@ const SWAP: Record<string, { 2?: string[]; 1?: string[] }> = {
   'Incline Dumbbell Press': { 1: ['Cable Chest Press', 'Cable Fly'] },
   'Dumbbell Curl': { 1: ['Cable Curl'] }, 'Hammer Curl': { 1: ['Cable Hammer Curl'] }, 'Dumbbell Fly': { 1: ['Cable Fly'] },
   'Lateral Raise': { 1: ['Cable Lateral Raise'] }, Plank: { 1: ['Cable Crunch'] },
+  'Dumbbell Shoulder Press': { 1: ['Machine Shoulder Press'] }, 'Dumbbell Bench Press': { 1: ['Machine Chest Press', 'Cable Chest Press'] },
+  'Dumbbell Lunge': { 1: ['Hack Squat', 'Leg Press'] }, 'Dumbbell Romanian Deadlift': { 1: ['Machine Back Extension', 'Leg Curl'] },
+  'Single-Arm Dumbbell Row': { 1: ['Chest-Supported Machine Row', 'Seated Cable Row'] }, 'Dumbbell Goblet Squat': { 1: ['Leg Press', 'Hack Squat'] },
 };
 
 export type Adapted = { tpl: PlanTemplate; swapped: Record<string, string>; notes: string[] };

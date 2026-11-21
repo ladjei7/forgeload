@@ -66,9 +66,9 @@ const GENTLER: Record<string, string[]> = {
   'Dumbbell Fly': ['Cable Chest Press', 'Machine Chest Press'],
   'Pull Up': ['Lat Pulldown', 'Close Grip Lat Pulldown'],
   'Barbell Row': ['Chest-Supported Machine Row', 'Seated Cable Row'],
-  'Romanian Deadlift': ['Leg Curl'], 'Dumbbell Romanian Deadlift': ['Leg Curl'], 'Machine Back Extension': ['Leg Curl', 'Cable Crunch'],
+  'Romanian Deadlift': ['Leg Curl', 'Leg Extension', 'Standing Calf Raise'], 'Dumbbell Romanian Deadlift': ['Leg Curl', 'Leg Extension', 'Standing Calf Raise'], 'Machine Back Extension': ['Leg Curl', 'Cable Crunch'],
   'Barbell Back Squat': ['Leg Press', 'Leg Curl'], 'Dumbbell Goblet Squat': ['Leg Press', 'Leg Curl'], 'Hack Squat': ['Leg Press', 'Leg Curl'],
-  'Leg Extension': ['Leg Curl'], 'Dumbbell Lunge': ['Leg Press', 'Leg Curl'],
+  'Leg Extension': ['Leg Curl'], 'Dumbbell Lunge': ['Leg Press', 'Leg Curl', 'Leg Extension'],
   'Barbell Curl': ['Hammer Curl', 'Cable Hammer Curl'], 'Skull Crusher': ['Tricep Pushdown', 'Cable Tricep Pushdown'],
 };
 
@@ -83,7 +83,7 @@ const MUSCLE: Record<string, string> = {
   'Barbell Curl': 'arms', 'Dumbbell Curl': 'arms', 'Hammer Curl': 'arms', 'Cable Curl': 'arms', 'Cable Hammer Curl': 'arms',
   'Tricep Pushdown': 'arms', 'Cable Tricep Pushdown': 'arms', 'Skull Crusher': 'arms',
   'Barbell Back Squat': 'legs', 'Dumbbell Goblet Squat': 'legs', 'Hack Squat': 'legs', 'Leg Press': 'legs', 'Leg Extension': 'legs',
-  'Leg Curl': 'legs', 'Romanian Deadlift': 'legs', 'Dumbbell Romanian Deadlift': 'legs', 'Standing Calf Raise': 'legs',
+  'Leg Curl': 'legs', 'Dumbbell Lunge': 'legs', 'Romanian Deadlift': 'legs', 'Dumbbell Romanian Deadlift': 'legs', 'Standing Calf Raise': 'legs',
 };
 const FOCUS_MUSCLES: Record<Focus, string[]> = { legs: ['legs'], chest_back: ['chest', 'back'], arms: ['arms'], shoulders: ['shoulders'] };
 
@@ -109,7 +109,10 @@ export function applyAreas(tpl: PlanTemplate, areas: Area[]): Personalized {
   });
   const names = AREAS.filter(a => areas.includes(a.id)).map(a => a.title.toLowerCase());
   const list = names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-  const notes = [`Because you mentioned your ${list}, ${swapped ? 'exercises that load them most start as gentler versions' : 'we kept an eye on exercises that load them'}.`];
+  const it = names.length === 1 && /back|neck/.test(names[0]) ? 'it' : 'them';
+  const notes = [swapped
+    ? `Because you mentioned your ${list}, exercises that load ${it} most start as gentler versions.`
+    : `You mentioned your ${list}. Nothing in this plan loads ${it} heavily, so no exercises needed changing.`];
   if (kept) notes.push('A few had no gentler option, so they are kept. Go light, and swap them if they bother you.');
   notes.push("Rest comes first. If something hurts (not just effort), stop and swap it, and see a doctor or physical therapist if pain continues. Forgeload doesn't diagnose or treat injuries.");
   return { tpl: { ...tpl, days }, notes, swapped: map };
@@ -130,4 +133,10 @@ export function applyFocus(tpl: PlanTemplate, focus: Focus[]): Personalized {
   });
   const names = FOCUSES.filter(f => focus.includes(f.id)).map(f => f.title.toLowerCase());
   return { tpl: { ...tpl, days }, notes: any ? [`More work for ${names.length === 2 ? `${names[0]}, plus ${names[1]}` : names[0]}: an extra set on those exercises, up to 2 per workout.`] : [] };
+}
+
+/** True when an exercise trains one of the chosen focus areas. */
+export function inFocus(name: string, focus: Focus[]): boolean {
+  const muscles = new Set(focus.slice(0, 2).flatMap(f => FOCUS_MUSCLES[f]));
+  return muscles.has(MUSCLE[name] ?? '');
 }
