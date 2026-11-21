@@ -10,6 +10,7 @@ type SetData = {
   set_number: number;
   reps: number;
   weight: number;
+  rir?: number | null;
 };
 
 type ExerciseLog = {
@@ -53,7 +54,8 @@ export default function HistoryPage() {
             exercise_sets (
               set_number,
               reps,
-              weight
+              weight,
+              rir
             )
           )
         `)
@@ -138,6 +140,7 @@ export default function HistoryPage() {
                             <li key={set.set_number} className="rounded-lg bg-fl-s2 px-2.5 py-1 text-sm tabular-nums">
                               <span className="sr-only">Set {set.set_number}: </span>
                               {set.weight > 0 ? <>{show(set.weight, unit)} {label(unit)} × {set.reps}</> : <>{set.reps} reps</>}
+                              {set.rir != null && <span className="ml-1 text-xs text-fl-tx2">RIR {set.rir}</span>}
                             </li>
                           ))}
                         </ul>

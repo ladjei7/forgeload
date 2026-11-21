@@ -101,13 +101,26 @@ test('chooseNext: a workout moved to today comes first', () => {
   const r = chooseNext({ sch: wk, today: '2026-11-18', done: [], decisions: [{ date: '2026-11-17', dayId: 'LA', action: 'rescheduled', to: '2026-11-18' }], rotationNext: 'UB' });
   assert.deepEqual(r, { dayId: 'LA', why: 'moved' });
 });
-test('chooseNext: rest day pulls the next planned workout forward; falls back to the rotation late in the week', () => {
+test('chooseNext: rest day pulls the next planned workout forward; late in the week it looks at next week', () => {
   const wed = chooseNext({ sch: wk, today: '2026-11-18', done: [{ dayId: 'UA', date: '2026-11-16' }, { dayId: 'LA', date: '2026-11-17' }], decisions: [], rotationNext: 'UB' });
   assert.deepEqual([wed.why, wed.dayId, wed.nextPlanned?.dayId], ['rest', 'UB', 'UB']);
   const sat = chooseNext({ sch: wk, today: '2026-11-21', done: [], decisions: [], rotationNext: 'UA' });
-  assert.deepEqual([sat.why, sat.dayId, sat.nextPlanned], ['rest', 'UA', undefined]);
+  assert.deepEqual([sat.why, sat.dayId, sat.nextPlanned], ['rest', 'UA', { date: '2026-11-23', dayId: 'UA' }]);
 });
 test('daysLeftInWeek and localDate', () => {
   assert.deepEqual(daysLeftInWeek('2026-11-20'), ['2026-11-20', '2026-11-21', '2026-11-22']);
   assert.equal(localDate(new Date(2026, 10, 5, 23, 30)), '2026-11-05');
+});
+
+test('persona test: a weekend rest day points at next week\'s first planned workout', () => {
+  const r = chooseNext({ sch: wk, today: '2026-11-21', done: [], decisions: [], rotationNext: 'UA' }); // Saturday
+  assert.equal(r.why, 'rest');
+  assert.deepEqual(r.nextPlanned, { date: '2026-11-23', dayId: 'UA' }); // Monday
+});
+
+import { localParts } from '../app/lib/exportData.ts';
+test('persona test: the CSV uses the local date and time, not UTC', () => {
+  const d = new Date(2026, 10, 20, 23, 15); // 11:15 pm local on Nov 20
+  assert.deepEqual(localParts(d.toISOString()), ['2026-11-20', '23:15']);
+  assert.deepEqual(localParts(null, '2026-11-19'), ['2026-11-19', '']);
 });

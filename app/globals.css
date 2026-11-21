@@ -45,3 +45,8 @@ button, a { touch-action: manipulation; }
 input, select, textarea { color: var(--fl-tx); }
 input::placeholder { color: var(--fl-tx2); opacity: .7; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
+
+/* Logo: the silver parts vanish on a light background, so light theme uses the charcoal version. */
+.fl-logo-light { display: none !important; }
+:root[data-theme="light"] .fl-logo-dark { display: none !important; }
+:root[data-theme="light"] .fl-logo-light { display: block !important; }

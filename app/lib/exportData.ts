@@ -48,13 +48,22 @@ export async function buildExport(): Promise<Export> {
 
 const q = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 
+const pad = (n: number) => String(n).padStart(2, '0');
+/** Local calendar date and time of a timestamp (what the person saw), not UTC. */
+export function localParts(iso: string | null | undefined, fallbackDate?: string | null): [string, string] {
+  if (!iso) return [fallbackDate ?? '', ''];
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return [fallbackDate ?? '', ''];
+  return [`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, `${pad(d.getHours())}:${pad(d.getMinutes())}`];
+}
+
 export function setsCsv(x: Export): string {
-  const lines = ['date,workout,exercise,set,weight_lb,reps,rir,effort'];
+  const lines = ['date,time,workout,exercise,set,weight_lb,reps,rir,effort'];
   for (const s of x.sessions) {
     const logs = (s.exercise_logs as Row[] | null) ?? [];
     const day = (s.day_name as string | null) ?? ((s.workout_days as Row | Row[] | null) && (Array.isArray(s.workout_days) ? (s.workout_days as Row[])[0] : s.workout_days as Row))?.day_name;
     for (const l of logs) for (const st of ((l.exercise_sets as Row[] | null) ?? []))
-      lines.push([s.completed_at ?? s.session_date, day, l.exercise_name, st.set_number, st.weight, st.reps, st.rir, l.effort].map(q).join(','));
+      lines.push([...localParts(s.completed_at as string | null, s.session_date as string | null), day, l.exercise_name, st.set_number, st.weight, st.reps, st.rir, l.effort].map(q).join(','));
   }
   return lines.join('\n') + '\n';
 }

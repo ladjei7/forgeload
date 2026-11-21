@@ -47,7 +47,8 @@ export default function LoginPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6 py-10 text-fl-tx">
       <h1 className="mb-6">
-        <Image src="/logo.png" alt="Forgeload" width={640} height={456} priority className="mx-auto block h-auto w-[70%] max-w-[260px]" />
+        <Image src="/logo.png" alt="Forgeload" width={640} height={456} priority className="fl-logo-dark mx-auto block h-auto w-[70%] max-w-[260px]" />
+        <Image src="/logo-light.png" alt="Forgeload" width={640} height={456} className="fl-logo-light mx-auto block h-auto w-[70%] max-w-[260px]" />
       </h1>
       <h2 className="text-2xl font-bold">{mode === 'signin' ? 'Welcome back' : mode === 'signup' ? 'Create your account' : 'Reset your password'}</h2>
       <p className="mb-6 mt-1 text-fl-tx2">{mode === 'signin' ? 'Sign in to pick up where you left off.' : mode === 'signup' ? 'Free. Your plan and every set you log, saved to your account.' : "Enter your email and we'll send you a link to choose a new password."}</p>

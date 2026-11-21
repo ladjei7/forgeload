@@ -138,7 +138,9 @@ export function chooseNext(p: { sch: Schedule; today: string; done: Completion[]
   const planned = plannedToday(p.sch, p.today, p.done);
   if (planned) return { dayId: planned, why: 'planned' };
   const doneThisWeek = p.done.filter(c => sameWeek(c.date, p.today, p.sch.weekStart)).map(c => c.dayId);
-  const nextPlanned = occurrencesForWeek(p.sch, p.today).find(o => o.date > p.today && !doneThisWeek.includes(o.dayId));
+  const nextPlanned = occurrencesForWeek(p.sch, p.today).find(o => o.date > p.today && !doneThisWeek.includes(o.dayId))
+    // Nothing left this week (a weekend, say): point at the first planned day of next week.
+    ?? occurrencesForWeek(p.sch, addDays(p.today, 7)).find(o => o.date > p.today);
   return { dayId: nextPlanned?.dayId ?? p.rotationNext, why: 'rest', nextPlanned };
 }
 

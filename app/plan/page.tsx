@@ -29,9 +29,11 @@ export default function PlanPage() {
   const [dayName, setDayName] = useState('');
   const [exerciseName, setExerciseName] = useState('');
   const [exerciseId, setExerciseId] = useState('');
-  const [sets, setSets] = useState('');
-  const [repMin, setRepMin] = useState('');
-  const [repMax, setRepMax] = useState('');
+  // Sensible defaults so adding an exercise is one tap after picking it (editable).
+  const [sets, setSets] = useState('3');
+  const [repMin, setRepMin] = useState('8');
+  const [repMax, setRepMax] = useState('12');
+  const [renaming, setRenaming] = useState<{ kind: 'plan' | 'day'; value: string } | null>(null);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   // Problems ("Error: ...", missing or wrong input) show in red; everything else is a confirmation.
   const setMessage = (text: string) => setMsg(text ? { kind: /^Error|^Fill in|^Check the|^Pick an|same exercise|could not be saved/.test(text) ? 'error' : 'ok', text: text.replace(/^Error: /, 'Something went wrong: ') } : null);
@@ -127,22 +129,33 @@ export default function PlanPage() {
     setCurrentId(planId);
     setMessage(ok ? `${plans.find(p => p.id === planId)?.name} is now your current plan. Your history is unchanged.` : 'Switched on this device, but it could not be saved to your account. Check your connection and try again.');
   }
-  async function renamePlan() {
-    const cur = plans.find(p => p.id === planId);
-    const name = prompt('Rename plan', cur?.name ?? '')?.trim();
-    if (!name || name === cur?.name) return;
-    const { error } = await supabase.from('workout_plans').update({ name }).eq('id', planId);
-    if (error) return setMessage('Error: ' + error.message);
-    await loadPlans();
+  async function saveRename() {
+    if (!renaming) return;
+    const name = renaming.value.trim();
+    if (!name) return setMessage('Enter a name.');
+    if (renaming.kind === 'plan') {
+      if (name !== plans.find(p => p.id === planId)?.name) {
+        const { error } = await supabase.from('workout_plans').update({ name }).eq('id', planId);
+        if (error) return setMessage('Error: ' + error.message);
+        await loadPlans();
+      }
+    } else if (name !== days.find(d => d.id === dayId)?.day_name) {
+      const { error } = await supabase.from('workout_days').update({ day_name: name }).eq('id', dayId);
+      if (error) return setMessage('Error: ' + error.message);
+      await loadDays(planId);
+    }
+    setRenaming(null);
   }
-  async function renameDay() {
-    const cur = days.find(d => d.id === dayId);
-    const name = prompt('Rename day', cur?.day_name ?? '')?.trim();
-    if (!name || name === cur?.day_name) return;
-    const { error } = await supabase.from('workout_days').update({ day_name: name }).eq('id', dayId);
-    if (error) return setMessage('Error: ' + error.message);
-    await loadDays(planId);
-  }
+  const renameBox = (label: string) => renaming && (
+    <form onSubmit={e => { e.preventDefault(); saveRename(); }} className="mt-3 flex gap-2">
+      <label className="min-w-0 flex-1">
+        <span className="sr-only">{label}</span>
+        <input autoFocus className={ui.input} value={renaming.value} maxLength={60} onChange={e => setRenaming({ ...renaming, value: e.target.value })} />
+      </label>
+      <button type="submit" className={ui.secondaryInline}>Save</button>
+      <button type="button" onClick={() => setRenaming(null)} className={ui.textBtn}>Cancel</button>
+    </form>
+  );
   function startEdit(ex: PlanEx) {
     setEditId(ex.id); setEditSets(String(ex.target_sets)); setEditMin(String(ex.rep_min)); setEditMax(String(ex.rep_max));
   }
@@ -234,10 +247,11 @@ export default function PlanPage() {
               : <button onClick={makeCurrent} className={`${ui.secondary} mt-3`}>Make this my current plan</button>)}
             {planId && (
               <div className="-ml-2 mt-1 flex gap-1">
-                <button onClick={renamePlan} className={ui.textBtn}>Rename plan</button>
+                <button onClick={() => setRenaming({ kind: 'plan', value: plan?.name ?? '' })} className={ui.textBtn}>Rename plan</button>
                 <button onClick={() => removePlan(planId)} className={ui.dangerText}>Delete plan</button>
               </div>
             )}
+            {renaming?.kind === 'plan' && renameBox('Rename plan to')}
           </div>
 
           {/* Workouts in the plan */}
@@ -268,10 +282,11 @@ export default function PlanPage() {
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-xl font-bold">{day.day_name}</h2>
                 <div className="-mr-2 flex">
-                  <button onClick={renameDay} className={ui.textBtn}>Rename</button>
+                  <button onClick={() => setRenaming({ kind: 'day', value: day.day_name })} className={ui.textBtn}>Rename</button>
                   <button onClick={() => removeDay(dayId)} className={ui.dangerText}>Remove</button>
                 </div>
               </div>
+              {renaming?.kind === 'day' && renameBox('Rename workout to')}
 
               <ul className="mt-2 divide-y divide-fl-line">
                 {exercises.map((ex, i) => (

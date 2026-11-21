@@ -131,7 +131,8 @@ export default function HomePage() {
   return (
     <main className="mx-auto max-w-xl px-4 pb-8 pt-6 text-fl-tx">
       <div className="mb-5 flex items-center gap-3">
-        <Image src="/brand/forgeload-symbol-1024.png" alt="" width={44} height={32} className="h-8 w-auto" priority />
+        <Image src="/brand/forgeload-symbol-1024.png" alt="" width={44} height={32} className="fl-logo-dark h-8 w-auto" priority />
+        <Image src="/brand/forgeload-symbol-light-1024.png" alt="" width={44} height={32} className="fl-logo-light h-8 w-auto" />
         <div>
           <h1 className="text-2xl font-bold leading-none tracking-tight">Forgeload</h1>
           <p className="mt-1 text-xs text-fl-tx2">Plan. Log. Overload.</p>
@@ -232,7 +233,7 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
-              <p className="mt-3 text-xs text-fl-tx2">Your plan follows a rotation, not the calendar: a missed day never skips a workout. {data.total} workouts logged in total.</p>
+              <p className="mt-3 text-xs text-fl-tx2">Your plan follows a rotation, not the calendar: a missed day never skips a workout. {data.total} {data.total === 1 ? 'workout' : 'workouts'} logged in total.</p>
             </section>
           )}
 

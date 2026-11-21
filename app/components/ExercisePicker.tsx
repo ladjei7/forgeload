@@ -32,6 +32,24 @@ export default function ExercisePicker({
   const [saving, setSaving] = useState(false);
   const reqId = useRef(0);
   const showFiltersRef = useRef(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Keyboard: arrow keys move through the results, Escape closes the list.
+  const moveFocus = (from: Element | null, dir: 1 | -1) => {
+    const items = [...(listRef.current?.querySelectorAll<HTMLButtonElement>('button[data-result]') ?? [])];
+    const i = from ? items.indexOf(from as HTMLButtonElement) : -1;
+    const next = items[i + dir];
+    if (next) next.focus(); else if (dir === -1) inputRef.current?.focus();
+  };
+  const onListKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveFocus(document.activeElement, e.key === 'ArrowDown' ? 1 : -1); }
+    if (e.key === 'Escape') { setOpen(false); inputRef.current?.focus(); }
+  };
+  const leaving = (e: React.FocusEvent) => {
+    const to = e.relatedTarget as Node | null;
+    if (to && (listRef.current?.contains(to) || to === inputRef.current)) return; // still inside the picker
+    setTimeout(() => { if (!showFiltersRef.current) setOpen(false); }, 150);
+  };
   useEffect(() => { showFiltersRef.current = showFilters; }, [showFilters]);
   const loadedShortcuts = useRef(false);
 
@@ -85,15 +103,15 @@ export default function ExercisePicker({
     setOpen(false);
   }
 
-  const row = 'cursor-pointer border-b border-fl-line px-3 py-2.5 last:border-b-0 hover:bg-fl-s1';
+  const row = 'block w-full cursor-pointer border-b border-fl-line px-3 py-2.5 text-left last:border-b-0 hover:bg-fl-s1 focus:bg-fl-s1 focus:outline-none';
   const section = (title: string, list: Result[]) => list.length > 0 && (
     <div key={title}>
       <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-fl-tx2">{title}</div>
       {list.map(e => (
-        <div key={e.id} onMouseDown={() => choose(e)} className={row}>
-          <div className="font-medium">{e.name}</div>
-          <div className="text-xs text-fl-tx2">{e.muscle_group} · {e.equipment}</div>
-        </div>
+        <button type="button" data-result key={e.id} onClick={() => choose(e)} className={row}>
+          <span className="block font-medium">{e.name}</span>
+          <span className="block text-xs text-fl-tx2">{e.muscle_group} · {e.equipment}</span>
+        </button>
       ))}
     </div>
   );
@@ -108,7 +126,9 @@ export default function ExercisePicker({
           value={value}
           onChange={e => { onChange(e.target.value); onPick?.(null); setOpen(true); }}
           onFocus={openList}
-          onBlur={() => setTimeout(() => { if (!showFiltersRef.current) setOpen(false); }, 150)}
+          ref={inputRef}
+          onBlur={leaving}
+          onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); moveFocus(null, 1); } else if (e.key === 'Escape') setOpen(false); }}
           className="h-12 min-w-0 flex-1 rounded-xl border border-fl-field bg-fl-s2 px-3 text-base text-fl-tx"
         />
         <button
@@ -121,6 +141,7 @@ export default function ExercisePicker({
       </div>
       {open && (searching || showFilters || favorites.length > 0 || recents.length > 0) && (
         <div
+          ref={listRef} role="group" aria-label="Exercise results" onKeyDown={onListKey} onBlur={leaving}
           onMouseDown={e => { if ((e.target as HTMLElement).tagName !== 'SELECT') e.preventDefault(); }}
           className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-fl-line bg-fl-s2 shadow-lg"
         >
@@ -133,10 +154,10 @@ export default function ExercisePicker({
             {failed && <div className="p-3 text-sm text-fl-bad">Search is unavailable right now. You can still add this as a custom exercise.</div>}
             {!searching && <>{section('Favorites', favorites)}{section('Recent', recents)}</>}
             {searching && shown.map(e => (
-              <div key={e.id} onMouseDown={() => choose(e)} className={row}>
-                <div className="font-medium">{e.name}{e.is_custom ? ' (yours)' : ''}</div>
-                <div className="text-xs text-fl-tx2">{e.muscle_group} · {e.equipment}</div>
-              </div>
+              <button type="button" data-result key={e.id} onClick={() => choose(e)} className={row}>
+                <span className="block font-medium">{e.name}{e.is_custom ? ' (yours)' : ''}</span>
+                <span className="block text-xs text-fl-tx2">{e.muscle_group} · {e.equipment}</span>
+              </button>
             ))}
             {searching && !failed && shown.length === 0 && (
               <div className="p-3 text-sm text-fl-tx2">
@@ -145,9 +166,9 @@ export default function ExercisePicker({
             )}
           </div>
           {q && !exact && (
-            <div onMouseDown={addCustom} className="cursor-pointer border-t border-fl-line bg-fl-s1 p-3 text-sm font-semibold text-fl-acc">
+            <button type="button" data-result onClick={addCustom} className="block w-full cursor-pointer border-t border-fl-line bg-fl-s1 p-3 text-left text-sm font-semibold text-fl-acc focus:outline-none focus:ring-2 focus:ring-fl-acc">
               {saving ? 'Adding...' : `+ Add "${q}" as a custom exercise`}
-            </div>
+            </button>
           )}
         </div>
       )}
