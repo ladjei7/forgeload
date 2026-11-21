@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { localParts } from './dates';
 
 type Row = Record<string, unknown>;
 
@@ -47,15 +48,6 @@ export async function buildExport(): Promise<Export> {
 }
 
 const q = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-
-const pad = (n: number) => String(n).padStart(2, '0');
-/** Local calendar date and time of a timestamp (what the person saw), not UTC. */
-export function localParts(iso: string | null | undefined, fallbackDate?: string | null): [string, string] {
-  if (!iso) return [fallbackDate ?? '', ''];
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return [fallbackDate ?? '', ''];
-  return [`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, `${pad(d.getHours())}:${pad(d.getMinutes())}`];
-}
 
 export function setsCsv(x: Export): string {
   const lines = ['date,time,workout,exercise,set,weight_lb,reps,rir,effort'];

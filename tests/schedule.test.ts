@@ -118,7 +118,7 @@ test('persona test: a weekend rest day points at next week\'s first planned work
   assert.deepEqual(r.nextPlanned, { date: '2026-11-23', dayId: 'UA' }); // Monday
 });
 
-import { localParts } from '../app/lib/exportData.ts';
+import { localParts } from '../app/lib/dates.ts';
 test('persona test: the CSV uses the local date and time, not UTC', () => {
   const d = new Date(2026, 10, 20, 23, 15); // 11:15 pm local on Nov 20
   assert.deepEqual(localParts(d.toISOString()), ['2026-11-20', '23:15']);
