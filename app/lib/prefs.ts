@@ -2,11 +2,11 @@ import { supabase } from './supabase';
 
 // Columns added by migration 014. Until that migration is applied, saving retries without them,
 // so nothing breaks (the plan itself is already built from the answers either way).
-const V2 = ['pain_areas', 'focus', 'unit'] as const;
+const V2 = ['pain_areas', 'injury_notes', 'focus', 'unit'] as const;
 
 export type PrefsPatch = {
   comfort?: string; session_minutes?: number | null; ask_effort?: boolean; track_rir?: boolean;
-  pain_areas?: string[]; focus?: string[]; unit?: 'lb' | 'kg';
+  pain_areas?: string[]; injury_notes?: string | null; focus?: string[]; unit?: 'lb' | 'kg';
 };
 
 export async function savePrefs(patch: PrefsPatch): Promise<{ error: { message: string } | null; partial: boolean }> {

@@ -9,8 +9,8 @@ import { createPlanFromTemplate } from '../lib/applyTemplate';
 import { applyComfort, type Comfort } from '../lib/comfort';
 import { supabase } from '../lib/supabase';
 import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
-import { applyAreas, applyFocus, AREAS, FOCUSES, type Area, type Focus } from '../lib/personalize';
-import { guessUnit, getUnit, setUnitLocal, type Unit } from '../lib/units';
+import { applyAreas, applyFocus, detectAreas, AREAS, FOCUSES, type Focus } from '../lib/personalize';
+import { getUnit, setUnitLocal, type Unit } from '../lib/units';
 import { savePrefs } from '../lib/prefs';
 
 // Session length shown as the minutes themselves (upper end of the range).
@@ -35,7 +35,6 @@ const GOALS: Choice<Goal>[] = [
   { id: 'muscle', icon: <Icon name="grow" size={26} />, title: 'Build muscle', sub: 'Size and shape' },
   { id: 'strength', icon: <Icon name="barbell" size={26} />, title: 'Get stronger', sub: 'Heavier weight on the big lifts' },
   { id: 'fat_loss', icon: <Icon name="flame" size={26} />, title: 'Lose body fat', sub: 'While keeping or building muscle' },
-  { id: 'fitness', icon: <Icon name="heart" size={26} />, title: 'Get fit and healthy', sub: 'Stronger, more energy, no specific target' },
 ];
 const TIMES: Choice<Minutes>[] = [
   { id: 25, icon: <Mins n="30" />, title: '20 to 30 minutes', sub: 'Quick and focused' },
@@ -58,8 +57,8 @@ const QUESTION = {
   goal: ["What's your main fitness goal?", 'This sets your rep ranges. You can change it later.'],
   time: ['How much time can you spend per workout?', 'We will fit the plan to your time.'],
   comfort: ['What exercises would you feel most comfortable starting with?', 'This only picks your starting exercises. You can change it any time, and you can swap any exercise later.'],
-  focus: ['Anything you want more of?', 'Pick up to two, or keep it balanced. We add a little extra work there.'],
-  areas: ['Anything we should go easy on?', "Pick any that bother you and we'll start with gentler exercises for them. You can change this in Settings."],
+  focus: ['Focus areas', 'Pick up to two for a little extra work there, or keep it balanced.'],
+  areas: ['Any known injuries?', 'Tell us in your own words, for example "bad left knee" or "shoulder surgery last year". We\'ll start with gentler exercises for that area.'],
 } as const;
 
 /** Multi-select option: toggles, never advances by itself. */
@@ -117,10 +116,13 @@ function StartFlow({ change }: { change: boolean }) {
   const [comfort, setComfort] = useState<Comfort | ''>(() => valid(saved.comfort, COMFORTS) ?? '');
   const okList = <T extends string,>(v: unknown, opts: { id: T }[]) => (Array.isArray(v) ? v.filter((x): x is T => opts.some(o => o.id === x)) : []);
   const [focus, setFocus] = useState<Focus[]>(() => okList(saved.focus, FOCUSES).slice(0, 2));
-  const [areas, setAreas] = useState<Area[]>(() => okList(saved.areas, AREAS));
-  const [unit, setUnit] = useState<Unit>(() => (saved.unit === 'kg' || saved.unit === 'lb' ? saved.unit : change ? getUnit() : guessUnit(typeof navigator !== 'undefined' ? navigator.language : undefined)));
+  // Injuries in the person's own words; the body areas are read from the text.
+  const [injury, setInjury] = useState<string>(() => (typeof saved.injury === 'string' ? saved.injury : ''));
+  const areas = detectAreas(injury);
+  // Pounds unless the person picks kilograms (here, or later in Settings).
+  const [unit, setUnit] = useState<Unit>(() => (saved.unit === 'kg' || saved.unit === 'lb' ? saved.unit : change ? getUnit() : 'lb'));
   const [focusHint, setFocusHint] = useState(false);
-  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify({ step, days, exp, goal, mins, comfort, focus, areas, unit })); } catch { /* optional */ } }, [KEY, step, days, exp, goal, mins, comfort, focus, areas, unit]);
+  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify({ step, days, exp, goal, mins, comfort, focus, injury, unit })); } catch { /* optional */ } }, [KEY, step, days, exp, goal, mins, comfort, focus, injury, unit]);
   const [current, setCurrent] = useState<{ name: string; workouts: number; unfinished: boolean } | null>(null);
   useEffect(() => {
     if (!change) return;
@@ -136,9 +138,10 @@ function StartFlow({ change }: { change: boolean }) {
         ]);
         setCurrent({ name: cur.name, workouts: count ?? 0, unfinished: (open ?? []).length > 0 });
         // Fill in what the account remembers if this device doesn't.
-        const p = prefs as { comfort: string | null; session_minutes: number | null; pain_areas?: string[]; focus?: string[] } | null;
+        const p = prefs as { comfort: string | null; session_minutes: number | null; pain_areas?: string[]; injury_notes?: string | null; focus?: string[] } | null;
         if (p?.comfort) setComfort(c => c || (valid(p.comfort, COMFORTS) ?? ''));
-        if (p?.pain_areas?.length) setAreas(a => (a.length ? a : okList(p.pain_areas, AREAS)));
+        const known = p?.injury_notes || (p?.pain_areas?.length ? AREAS.filter(a => p.pain_areas!.includes(a.id)).map(a => a.title.toLowerCase()).join(', ') : '');
+        if (known) setInjury(i => i || known);
         if (p?.focus?.length) setFocus(f => (f.length ? f : okList(p.focus, FOCUSES).slice(0, 2)));
         if (p?.session_minutes) setMins(m => m || (TIMES.reduce((a, b) => Math.abs(b.id - p.session_minutes!) < Math.abs(a.id - p.session_minutes!) ? b : a).id));
       } catch { /* the questions still work without this */ }
@@ -169,9 +172,9 @@ function StartFlow({ change }: { change: boolean }) {
     if ('error' in res) { setBusy(false); return setError('Could not create the plan: ' + res.error); }
     await setCurrentPlan(res.planId); // best effort beyond this device; the plan exists either way
     setUnitLocal(unit);
-    try { localStorage.setItem('fl-comfort', comfort); localStorage.setItem('fl-answers', JSON.stringify({ exp, goal, mins, comfort, focus, areas, unit })); localStorage.removeItem(KEY); } catch { /* optional */ }
+    try { localStorage.setItem('fl-comfort', comfort); localStorage.setItem('fl-answers', JSON.stringify({ exp, goal, mins, comfort, focus, unit })); localStorage.removeItem(KEY); } catch { /* optional */ }
     try { // best effort: the plan is already created even if preferences cannot be saved
-      if (comfort) await savePrefs({ comfort, session_minutes: mins || null, pain_areas: areas, focus, unit });
+      if (comfort) await savePrefs({ comfort, session_minutes: mins || null, pain_areas: areas, injury_notes: injury.trim() || null, focus, unit });
     } catch { /* optional */ }
     router.push('/');
   }
@@ -205,12 +208,26 @@ function StartFlow({ change }: { change: boolean }) {
                 else if (focus.length >= 2) setFocusHint(true);
                 else { setFocus([...focus, f.id]); setFocusHint(false); }
               }} />)}
+            <Toggle title="Keep it balanced" sub="No extra focus; everything gets the same attention" on={focus.length === 0} toggle={() => { setFocus([]); setFocusHint(false); }} />
             {focusHint && <p role="status" className="text-sm text-fl-tx2">Pick up to two. Tap one to remove it first.</p>}
-            <button onClick={() => setStep(s => s + 1)} className="h-14 w-full rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc">{focus.length ? 'Continue' : 'Keep it balanced'}</button>
+            <button onClick={() => setStep(s => s + 1)} className="h-14 w-full rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc">Continue</button>
           </>}
           {key === 'areas' && <>
-            {AREAS.map(a => <Toggle key={a.id} title={a.title} on={areas.includes(a.id)} toggle={() => setAreas(x => x.includes(a.id) ? x.filter(y => y !== a.id) : [...x, a.id])} />)}
-            <button onClick={() => setStep(s => s + 1)} className="h-14 w-full rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc">{areas.length ? 'Continue' : 'Nothing to avoid'}</button>
+            <label className="block">
+              <span className="sr-only">Known injuries</span>
+              <textarea value={injury} onChange={e => setInjury(e.target.value.slice(0, 300))} rows={3} maxLength={300}
+                placeholder="For example: bad left knee" className="w-full rounded-2xl border border-fl-field bg-fl-s1 p-4 text-base text-fl-tx placeholder:text-fl-tx2" />
+            </label>
+            {injury.trim() !== '' && (areas.length
+              ? <p role="status" className="text-sm"><span className="font-semibold">We&apos;ll go easy on:</span> {AREAS.filter(a => areas.includes(a.id)).map(a => a.title.toLowerCase()).join(', ')}</p>
+              : !/^\s*(no|none|nothing|nope|n\/?a)\s*[.!]?\s*$/i.test(injury) && <p role="status" className="text-sm text-fl-tx2">We couldn&apos;t match that to a body area, so your exercises won&apos;t change. You can swap any exercise that bothers you.</p>)}
+            <div className="rounded-2xl border border-fl-line bg-fl-s1 p-4 text-sm leading-relaxed text-fl-tx2">
+              <span className="font-semibold text-fl-tx">Rest comes first.</span> If an injury is recent, painful or still healing, give it time and check with a doctor or physical therapist before training it. Forgeload doesn&apos;t diagnose or treat injuries.
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => { setInjury(''); setStep(s => s + 1); }} className="h-14 rounded-xl border border-fl-field bg-fl-s1 text-lg font-semibold">None</button>
+              <button onClick={() => setStep(s => s + 1)} disabled={!injury.trim()} className="h-14 rounded-xl bg-fl-acc text-lg font-bold text-fl-on-acc disabled:opacity-50">Continue</button>
+            </div>
           </>}
         </div>
         <div className="mt-6 flex items-center justify-between text-sm">
@@ -221,7 +238,7 @@ function StartFlow({ change }: { change: boolean }) {
     );
   }
 
-  const chips = [`${days} ${days === 1 ? "day" : "days"} a week`, EXP.find(e => e.id === exp)?.title, GOALS.find(g => g.id === goal)?.title, ...FOCUSES.filter(f => focus.includes(f.id)).map(f => `More ${f.title.toLowerCase()}`), TIMES.find(t => t.id === mins)?.title, COMFORTS.find(c => c.id === comfort)?.title, ...(areas.length ? [`Go easy: ${AREAS.filter(a => areas.includes(a.id)).map(a => a.title.toLowerCase()).join(', ')}`] : [])];
+  const chips = [`${days} ${days === 1 ? "day" : "days"} a week`, EXP.find(e => e.id === exp)?.title, GOALS.find(g => g.id === goal)?.title, ...(focus.length ? FOCUSES.filter(f => focus.includes(f.id)).map(f => `More ${f.title.toLowerCase()}`) : ['Balanced']), TIMES.find(t => t.id === mins)?.title, COMFORTS.find(c => c.id === comfort)?.title, ...(areas.length ? [`Go easy: ${AREAS.filter(a => areas.includes(a.id)).map(a => a.title.toLowerCase()).join(', ')}`] : injury.trim() && !/^\s*(no|none|nothing|nope|n\/?a)\s*[.!]?\s*$/i.test(injury) ? ['Injury noted'] : [])];
   const others = rec ? [rec.primary, ...rec.alternatives].filter(id => id !== chosenId) : [];
 
   return (

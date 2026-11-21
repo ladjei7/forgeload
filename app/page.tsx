@@ -8,7 +8,7 @@ import { chooseNext, homePrompt, localDate, type NextPick, type HomePrompt } fro
 import { loadScheduleState } from './lib/scheduleData';
 import SchedulePrompt from './components/SchedulePrompt';
 import { pickCurrent } from './lib/pickCurrent';
-import { getUnit, show, stepFor } from './lib/units';
+import { getUnit, show, stepFor, loadable } from './lib/units';
 import SwapSuggestionCard from './components/SwapSuggestionCard';
 import { summarize, weekDots, todayIndex, estimateMinutes, rotationPosition, type ExSummary, type HistEntry, type PlanExLite } from './lib/homeSummary';
 
@@ -95,7 +95,7 @@ export default function HomePage() {
                 .not('workout_sessions.completed_at', 'is', null).limit(500);
               const entries: HistEntry[] = ((hist ?? []) as unknown as { exercise_name: string; exercise_id: string | null; workout_sessions: { completed_at: string } | { completed_at: string }[] | null; exercise_sets: HistEntry['sets'] | null }[])
                 .map(r => ({ name: r.exercise_name, exerciseId: r.exercise_id, at: one(r.workout_sessions)?.completed_at ?? '', sets: r.exercise_sets ?? [] }));
-              h.next = { dayName: next.day_name, exercises: summarize(planEx, entries, lb => show(lb, getUnit()), stepFor(getUnit())), pos: rotationPosition(dayList.map(d => d.id), next.id), minutes: estimateMinutes(planEx) };
+              h.next = { dayName: next.day_name, exercises: summarize(planEx, entries, lb => show(lb, getUnit()), stepFor(getUnit()), (w, above) => loadable(w, getUnit(), above)), pos: rotationPosition(dayList.map(d => d.id), next.id), minutes: estimateMinutes(planEx) };
             }
             else h.emptyPlan = true;
           } else h.emptyPlan = true;

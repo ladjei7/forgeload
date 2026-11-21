@@ -30,3 +30,14 @@ export function getUnit(): Unit {
   try { return localStorage.getItem(KEY) === 'kg' ? 'kg' : 'lb'; } catch { return 'lb'; }
 }
 export function setUnitLocal(u: Unit) { try { localStorage.setItem(KEY, u); } catch { /* optional */ } }
+
+/**
+ * A target you can actually put on the bar or pick off the rack. Kilograms: nearest 2.5 kg, and when
+ * the target is to go up, always heavier than `above` (last time's top weight). Pounds: unchanged.
+ */
+export function loadable(w: number, unit: Unit, above?: number): number {
+  if (unit === 'lb') return Math.round(w * 10) / 10;
+  let r = Math.round(w / 2.5) * 2.5;
+  if (above !== undefined && r <= above) r = Math.ceil((above + 0.01) / 2.5) * 2.5;
+  return r;
+}

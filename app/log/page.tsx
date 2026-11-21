@@ -13,7 +13,7 @@ import { loadScheduleState } from '../lib/scheduleData';
 import { pickCurrent, setCurrentPlan } from '../lib/currentPlan';
 import { localDateString } from '../lib/dates';
 import { newId, overlay, forSession, type Op, type Effort } from '../lib/outbox';
-import { getUnit, show, toLb, stepFor, longName, label as unitLabel, type Unit } from '../lib/units';
+import { getUnit, show, toLb, stepFor, longName, loadable, label as unitLabel, type Unit } from '../lib/units';
 import { ensureInit, getState, subscribe, addOp, dropSession, syncNow } from '../lib/outboxSync';
 
 type Plan = { id: string; name: string; is_active?: boolean | null };
@@ -82,6 +82,8 @@ export default function LogPage() {
   const [trackRir, setTrackRir] = useState(false);
   const [efforts, setEfforts] = useState<Record<string, Effort | null>>({}); // by exercise name, this workout
   const [effortOpen, setEffortOpen] = useState<Record<string, boolean>>({}); // re-opened to change, or skipped (false)
+  // First-workout calibration: after set 1 of a new exercise, adjust the rest of today's sets.
+  const [calib, setCalib] = useState<Record<string, { feel: 'light' | 'right' | 'heavy'; weight: number }>>({});
   const [summary, setSummary] = useState<Summary | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [rest, setRest] = useState<Rest | null>(null);
@@ -321,8 +323,10 @@ export default function LogPage() {
   const targets = useMemo(() => {
     const t: Record<string, ReturnType<typeof suggestTarget>> = {};
     for (const ex of exercises) {
-      const x = suggestTarget(prev[ex.exercise_name]?.sets ?? [], ex.rep_min, ex.rep_max, stepFor(unit));
-      t[ex.id] = x.weight === null ? x : { ...x, weight: Math.round(x.weight * 10) / 10 };
+      const ps = prev[ex.exercise_name]?.sets ?? [];
+      const x = suggestTarget(ps, ex.rep_min, ex.rep_max, stepFor(unit));
+      const top = ps.length ? Math.max(...ps.map(s => s.weight)) : 0;
+      t[ex.id] = x.weight === null ? x : { ...x, weight: loadable(x.weight, unit, x.action === 'add_weight' ? top : undefined) };
     }
     return t;
   }, [exercises, prev, unit]);
@@ -571,6 +575,37 @@ export default function LogPage() {
       </div>
     );
   };
+  /** One tap after the first set of a brand-new exercise; prefills the remaining sets. */
+  const calibBlock = (ex: PlanEx, rs: SetRow[], bw: boolean) => {
+    const t = targets[ex.id];
+    if (!session || bw || t?.action !== 'start' || rs.length < 2 || !rs[0].done) return null;
+    const done = calib[ex.exercise_name];
+    if (done) return rs.some(r => !r.done) ? (
+      <p role="status" className="mt-3 text-sm text-fl-tx2">Next sets: <span className="font-semibold text-fl-tx">{done.weight} {unitLabel(unit)}</span>. Next time&apos;s target comes from what you lift today.</p>
+    ) : null;
+    if (rs[1].done) return null;
+    const w = parseFloat(rs[0].weight) || 0;
+    const step = stepFor(unit);
+    const delta = Math.max(step, Math.round((w * 0.1) / step) * step);
+    const pick = (feel: 'light' | 'right' | 'heavy') => {
+      const nw = Math.round((feel === 'light' ? w + delta : feel === 'heavy' ? Math.max(0, w - delta) : w) * 10) / 10;
+      rs.forEach((r, i) => { if (i > 0 && !r.done && (r.weight === '' || r.weight === rs[0].weight)) setRow(ex.id, i, { weight: String(nw) }); });
+      setCalib(m => ({ ...m, [ex.exercise_name]: { feel, weight: nw } }));
+    };
+    return (
+      <div className="mt-3 rounded-xl bg-fl-s2 p-3" role="group" aria-label={`How did the first set of ${ex.exercise_name} feel?`}>
+        <p className="font-semibold">How did that first set feel?</p>
+        <p className="mb-2 text-xs text-fl-tx2">We&apos;ll set the weight for your next sets.</p>
+        <div className="grid grid-cols-3 gap-2">
+          {([['light', 'Too light', `+${delta}`], ['right', 'About right', 'same'], ['heavy', 'Too heavy', `-${delta}`]] as const).map(([k, title, sub]) => (
+            <button key={k} onClick={() => pick(k)} className="min-h-12 rounded-lg border border-fl-line bg-fl-s1 px-2 py-2 text-sm">
+              <span className="block font-semibold">{title}</span><span className="block text-xs text-fl-tx2">{sub === 'same' ? 'keep it' : `${sub} ${unitLabel(unit)}`}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
   const rirNote = <p className="mb-2 text-xs text-fl-tx2">RIR (optional): how many more clean reps you could have done. 0 = none left.</p>;
 
   if (loading) return <main className="mx-auto max-w-xl px-4 pt-6 text-fl-tx"><p className="text-fl-tx2">Loading your workout...</p></main>;
@@ -611,7 +646,7 @@ export default function LogPage() {
   }
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-44 pt-4 text-fl-tx">
+    <main className={`mx-auto max-w-xl px-4 pt-4 text-fl-tx ${rest ? 'pb-64' : 'pb-44'}`}>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-xs uppercase tracking-wide text-fl-tx2">{session ? 'Workout in progress' : dayId === suggestedDayId ? 'Up next' : 'Selected workout'}</div>
@@ -729,8 +764,9 @@ export default function LogPage() {
               <summary className="cursor-pointer list-none py-1">
                 <div className="text-[11px] uppercase tracking-wide text-fl-tx2">Target</div>
                 <div className="text-2xl font-semibold leading-tight tracking-tight">
-                  {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : `Find your ${ex.rep_min}-${ex.rep_max} rep weight`) : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} ${unitLabel(unit)}` : 'add load'} × ${t.reps}`)}
+                  {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : 'Find your starting weight') : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} ${unitLabel(unit)}` : 'add load'} × ${t.reps}`)}
                 </div>
+                {t.action === 'start' && !bw && <span className="mb-1 block text-sm text-fl-tx2">First time: pick a weight you could lift about {ex.rep_max + 2} times with good form, and stop at {ex.rep_max}.</span>}
                 <span className="text-xs text-fl-tx2 underline">why this target?</span>
               </summary>
               <p className="mt-2 text-xs leading-relaxed text-fl-tx2">{t.reason}</p>
@@ -781,6 +817,7 @@ export default function LogPage() {
                       <p className="mt-2 text-center text-xs text-fl-tx2">Empty boxes use the target.</p>
                     </div>
                   ) : <p className="font-semibold text-fl-ok">✓ All sets saved for this exercise.</p>}
+                  {calibBlock(ex, rs, bw)}
                   {effortBlock(ex, rs)}
                 </div>
               );
@@ -834,6 +871,7 @@ export default function LogPage() {
                   ))}
                 {r.state === 'local' && !ob.online && <p className="mt-1 text-right text-xs text-fl-tx2" role="status">On this device. Syncs when you reconnect.</p>}
                 {r.state === 'failed' && <p className="mt-1 text-right text-xs text-fl-bad" role="alert">Not saved to your account. Tap ↻ to retry.</p>}
+                {i === 0 && calibBlock(ex, rs, bw)}
                 </div>
               );
             })}
@@ -854,15 +892,24 @@ export default function LogPage() {
       )}
 
       {rest && (
-        <div role="timer" aria-live="off" className="fixed inset-x-0 bottom-[78px] z-50 mx-auto flex max-w-xl items-center gap-3 rounded-2xl border border-fl-line bg-fl-s2 p-3 shadow-lg" style={{ width: 'calc(100% - 1.5rem)' }}>
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] uppercase tracking-wide text-fl-tx2">{restLeft === 0 ? 'Rest over' : rest.paused !== undefined ? 'Rest paused' : 'Rest'}</div>
-            <div className={`text-3xl font-bold tabular-nums ${restLeft === 0 ? 'text-fl-ok' : ''}`}>{mmss(restLeft)}</div>
+        <div role="timer" aria-live="off" className="fixed inset-x-0 bottom-[78px] z-50 mx-auto max-w-xl rounded-2xl border border-fl-line bg-fl-s2 px-3 pb-3 pt-2.5 shadow-lg" style={{ width: 'calc(100% - 1.5rem)' }}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="text-[11px] uppercase tracking-wide text-fl-tx2">{restLeft === 0 ? 'Rest over' : rest.paused !== undefined ? 'Rest paused' : 'Rest'}</span>
+              <span className={`text-2xl font-bold tabular-nums ${restLeft === 0 ? 'text-fl-ok' : ''}`}>{mmss(restLeft)}</span>
+            </div>
+            <button onClick={stopRest} className="h-10 shrink-0 rounded-xl bg-fl-acc px-4 text-sm font-bold text-fl-on-acc">{restLeft === 0 ? 'Close' : 'Skip rest'}</button>
           </div>
-          {restLeft > 0 && <button onClick={togglePause} aria-pressed={rest.paused !== undefined} className="h-11 rounded-xl border border-fl-field px-3 text-sm">{rest.paused !== undefined ? 'Resume' : 'Pause'}</button>}
-          <button onClick={() => adjustRest(-15)} className="h-11 rounded-xl border border-fl-field px-3 text-sm">-15s</button>
-          <button onClick={() => adjustRest(15)} className="h-11 rounded-xl border border-fl-field px-3 text-sm">+15s</button>
-          <button onClick={stopRest} className="h-11 rounded-xl bg-fl-acc px-4 text-sm font-bold text-fl-on-acc">{restLeft === 0 ? 'Close' : 'Skip'}</button>
+          {restLeft > 0 && <>
+            <div className="mt-2 h-1 overflow-hidden rounded-full bg-fl-s1" aria-hidden="true">
+              <div className="h-full rounded-full bg-fl-acc transition-[width] duration-1000 ease-linear" style={{ width: `${Math.min(100, (restLeft / Math.max(1, rest.total)) * 100)}%` }} />
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <button onClick={togglePause} aria-pressed={rest.paused !== undefined} className="h-10 rounded-xl border border-fl-field text-sm">{rest.paused !== undefined ? 'Resume' : 'Pause'}</button>
+              <button onClick={() => adjustRest(-15)} aria-label="15 seconds less rest" className="h-10 rounded-xl border border-fl-field text-sm">-15s</button>
+              <button onClick={() => adjustRest(15)} aria-label="15 seconds more rest" className="h-10 rounded-xl border border-fl-field text-sm">+15s</button>
+            </div>
+          </>}
         </div>
       )}
     </main>

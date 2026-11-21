@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import { pendingOnDevice } from '../lib/outboxSync';
 import { buildExport, setsCsv, download } from '../lib/exportData';
 import type { Comfort } from '../lib/comfort';
-import { AREAS, type Area } from '../lib/personalize';
+import { AREAS, detectAreas } from '../lib/personalize';
 import { getUnit, setUnitLocal, type Unit } from '../lib/units';
 import { savePrefs } from '../lib/prefs';
 
@@ -40,7 +40,8 @@ export default function SettingsPage() {
   }
 
   const [unit, setUnit] = useState<Unit>(() => getUnit());
-  const [areas, setAreas] = useState<Area[]>([]);
+  const [injury, setInjury] = useState('');
+  const [savedInjury, setSavedInjury] = useState('');
   const [aboutMsg, setAboutMsg] = useState('');
   async function saveUnit(u: Unit) {
     const before = unit; setUnit(u); setUnitLocal(u); setAboutMsg('');
@@ -48,13 +49,14 @@ export default function SettingsPage() {
     if (r.error) { setUnit(before); setUnitLocal(before); return setErr('Could not save that setting. Check your connection and try again.'); }
     setAboutMsg(`Weights now show in ${u === 'kg' ? 'kilograms' : 'pounds'}. Everything you logged is converted; nothing is lost.`);
   }
-  async function toggleArea(a: Area) {
-    const next = areas.includes(a) ? areas.filter(x => x !== a) : [...areas, a];
-    const before = areas; setAreas(next); setAboutMsg('');
-    const r = await savePrefs({ pain_areas: next });
-    if (r.error) { setAreas(before); return setErr('Could not save that setting. Check your connection and try again.'); }
+  async function saveInjury() {
+    const text = injury.trim(); setAboutMsg('');
+    const r = await savePrefs({ injury_notes: text || null, pain_areas: detectAreas(text) });
+    if (r.error) return setErr('Could not save that setting. Check your connection and try again.');
+    setSavedInjury(injury);
     setAboutMsg('Saved. Used the next time we build you a plan. Your current plan is unchanged; swap any exercise from the workout screen.');
   }
+  const injuryAreas = detectAreas(injury);
   const [askEffort, setAskEffort] = useState(true);
   const [trackRir, setTrackRir] = useState(false);
   const [effortMsg, setEffortMsg] = useState('');
@@ -62,7 +64,8 @@ export default function SettingsPage() {
     supabase.from('user_training_prefs').select('*').maybeSingle().then(({ data }) => {
       if (data?.comfort) setComfort(data.comfort as Comfort);
       if (data) { setAskEffort(data.ask_effort !== false); setTrackRir(data.track_rir === true); }
-      if (Array.isArray(data?.pain_areas)) setAreas((data.pain_areas as string[]).filter((a): a is Area => AREAS.some(x => x.id === a)));
+      const known = (data?.injury_notes as string | null) || (Array.isArray(data?.pain_areas) ? AREAS.filter(a => (data.pain_areas as string[]).includes(a.id)).map(a => a.title.toLowerCase()).join(', ') : '');
+      if (known) { setInjury(known); setSavedInjury(known); }
       if (data?.unit === 'kg' || data?.unit === 'lb') { setUnit(data.unit); setUnitLocal(data.unit); }
     });
   }, []);
@@ -138,14 +141,16 @@ export default function SettingsPage() {
               className={`h-11 flex-1 rounded-lg font-semibold ${unit === u ? 'bg-fl-s1 text-fl-tx shadow' : 'text-fl-tx2'}`}>{u === 'lb' ? 'Pounds (lb)' : 'Kilograms (kg)'}</button>
           ))}
         </div>
-        <h2 className="mb-1 mt-5 text-lg font-bold">Go easy on</h2>
-        <p className="mb-3 text-sm text-fl-tx2">Areas that bother you. New plans start with gentler exercises for them. This isn&apos;t medical advice.</p>
-        <div className="flex flex-wrap gap-2">
-          {AREAS.map(a => (
-            <button key={a.id} aria-pressed={areas.includes(a.id)} onClick={() => toggleArea(a.id)}
-              className={`h-10 rounded-full border px-4 text-sm font-semibold ${areas.includes(a.id) ? 'border-fl-acc bg-fl-tint text-fl-tx' : 'border-fl-line bg-fl-s2 text-fl-tx2'}`}>{a.title}</button>
-          ))}
-        </div>
+        <h2 className="mb-1 mt-5 text-lg font-bold">Known injuries</h2>
+        <p className="mb-2 text-sm text-fl-tx2">In your own words. New plans start with gentler exercises for the areas you mention.</p>
+        <label className="block">
+          <span className="sr-only">Known injuries</span>
+          <textarea value={injury} onChange={e => setInjury(e.target.value.slice(0, 300))} rows={2} maxLength={300} placeholder="None"
+            className="w-full rounded-xl border border-fl-field bg-fl-s2 p-3 text-base text-fl-tx placeholder:text-fl-tx2" />
+        </label>
+        {injuryAreas.length > 0 && <p className="mt-1 text-sm"><span className="font-semibold">We&apos;ll go easy on:</span> {AREAS.filter(a => injuryAreas.includes(a.id)).map(a => a.title.toLowerCase()).join(', ')}</p>}
+        <p className="mt-2 text-xs leading-relaxed text-fl-tx2">Rest comes first. If an injury is recent, painful or still healing, give it time and check with a doctor or physical therapist. Forgeload doesn&apos;t diagnose or treat injuries.</p>
+        {injury !== savedInjury && <button onClick={saveInjury} className="mt-3 flex h-11 w-full items-center justify-center rounded-xl bg-fl-s2 font-semibold">Save</button>}
         {aboutMsg && <p role="status" className="mt-3 text-sm text-fl-ok">{aboutMsg}</p>}
       </section>
 

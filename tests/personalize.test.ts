@@ -19,7 +19,7 @@ test('shoulders: pressing moves to gentler options, sets and reps kept', () => {
   const r = applyAreas(tpl, ['shoulders']);
   assert.deepEqual(names(r.tpl, 0), ['Machine Chest Press', 'Barbell Row', 'Cable Lateral Raise', 'Barbell Curl', 'Skull Crusher']);
   assert.deepEqual(r.tpl.days[0].exercises[0].slice(1), [3, 6, 10]);
-  assert.match(r.notes[0], /your shoulders/); assert.match(r.notes.at(-1)!, /isn't medical advice/);
+  assert.match(r.notes[0], /your shoulders/); assert.match(r.notes.at(-1)!, /Rest comes first/);
 });
 test('knees and lower back: squats and hinges swapped; a replacement never loads a chosen area or duplicates', () => {
   const r = applyAreas(tpl, ['knees', 'lower_back']);
@@ -53,4 +53,32 @@ test('units: kg round-trips through stored pounds; steps; labels', () => {
 });
 test('units: suggested from the device language', () => {
   assert.equal(guessUnit('en-US'), 'lb'); assert.equal(guessUnit('en-GB'), 'kg'); assert.equal(guessUnit('fr-FR'), 'kg'); assert.equal(guessUnit(undefined), 'kg');
+});
+
+import { detectAreas } from '../app/lib/personalize.ts';
+test('injuries in the person\'s own words map to body areas', () => {
+  const cases: [string, string[]][] = [
+    ['bad left knee', ['knees']], ['Torn ACL 2 years ago', ['knees']], ['rotator cuff surgery last year', ['shoulders']],
+    ['lower back pain, herniated disc', ['lower_back']], ['tennis elbow and a sore wrist', ['wrists', 'elbows']],
+    ['achilles tendon', ['ankles']], ['hip flexor strain', ['hips']], ['stiff neck', ['neck']],
+    ['None', []], ['no', []], ['n/a', []], ['nothing.', []], ['', []], ['torn pec', []],
+  ];
+  for (const [t, want] of cases) assert.deepEqual(detectAreas(t), want, t);
+});
+test('hips and ankles: squats and lunges move to the leg press', () => {
+  const t = { id: 't', name: 'T', blurb: '', days: [{ name: 'Lower', exercises: [['Barbell Back Squat', 3, 6, 10], ['Dumbbell Lunge', 3, 8, 12], ['Leg Curl', 3, 10, 15], ['Standing Calf Raise', 3, 10, 15]] }] } as PlanTemplate;
+  const r = applyAreas(t, ['ankles']);
+  // lunge: both gentler options already used -> dropped (4 -> 3); calf raise: nothing gentler and the workout can't go below 3 -> kept with a note
+  assert.deepEqual(r.tpl.days[0].exercises.map(e => e[0]), ['Leg Press', 'Leg Curl', 'Standing Calf Raise']);
+  assert.ok(r.notes.some(n => /no gentler option/.test(n)));
+  assert.match(r.notes.at(-1)!, /Rest comes first/);
+});
+
+import { loadable } from '../app/lib/units.ts';
+test('kg targets are loadable: multiples of 2.5 kg, and heavier than last time when going up', () => {
+  assert.equal(loadable(63.7, 'kg', 61.2), 62.5);
+  assert.equal(loadable(61.2, 'kg'), 60);
+  assert.equal(loadable(62.5, 'kg', 60), 62.5);
+  assert.equal(loadable(61.3, 'kg', 61.2), 62.5); // rounding down would not be an increase
+  assert.equal(loadable(137.5, 'lb', 135), 137.5);
 });

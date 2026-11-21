@@ -3,13 +3,36 @@
 // Names are template names or names already used by comfort.ts; all resolve to reviewed library exercises.
 import type { PlanTemplate } from './templates';
 
-export type Area = 'shoulders' | 'lower_back' | 'knees' | 'wrists' | 'elbows';
+export type Area = 'shoulders' | 'lower_back' | 'knees' | 'wrists' | 'elbows' | 'hips' | 'ankles' | 'neck';
 export type Focus = 'legs' | 'chest_back' | 'arms' | 'shoulders';
 
 export const AREAS: { id: Area; title: string }[] = [
   { id: 'shoulders', title: 'Shoulders' }, { id: 'lower_back', title: 'Lower back' }, { id: 'knees', title: 'Knees' },
-  { id: 'wrists', title: 'Wrists' }, { id: 'elbows', title: 'Elbows' },
+  { id: 'wrists', title: 'Wrists' }, { id: 'elbows', title: 'Elbows' }, { id: 'hips', title: 'Hips' },
+  { id: 'ankles', title: 'Ankles and feet' }, { id: 'neck', title: 'Neck' },
 ];
+
+/** Words people use for each area. Order matters only for display. */
+const AREA_WORDS: [Area, RegExp][] = [
+  ['shoulders', /shoulder|rotator|labrum|\bac joint|collar ?bone|clavicle|impingement|delt\b/],
+  ['lower_back', /\bback\b|spine|spinal|\bdis[ck]|sciatica|lumbar|herniat|\bsi joint|sacroiliac/],
+  ['knees', /knee|\bacl\b|\bmcl\b|\bpcl\b|menisc|patell/],
+  ['wrists', /wrist|carpal/],
+  ['elbows', /elbow|tendinitis in my arm|\bulnar/],
+  ['hips', /\bhips?\b|groin|hip flexor/],
+  ['ankles', /ankle|achilles|\bfoot\b|\bfeet\b|plantar|\bheel/],
+  ['neck', /\bneck\b|cervical/],
+];
+
+/**
+ * Body areas mentioned in the person's own words ("bad left knee", "rotator cuff surgery").
+ * "None" and similar mean nothing. Anything unrecognised is kept as text but changes no exercises.
+ */
+export function detectAreas(text: string): Area[] {
+  const t = ` ${text.toLowerCase()} `;
+  if (/^\s*(no|none|nothing|nope|n\/?a|not really|no injuries?)\s*[.!]?\s*$/.test(text.toLowerCase())) return [];
+  return AREA_WORDS.filter(([, re]) => re.test(t)).map(([a]) => a);
+}
 export const FOCUSES: { id: Focus; title: string; sub: string }[] = [
   { id: 'legs', title: 'Legs and glutes', sub: 'Squats, presses, hinges, curls' },
   { id: 'chest_back', title: 'Chest and back', sub: 'Presses, rows, pulldowns' },
@@ -26,6 +49,12 @@ const LOADS: Record<string, Area[]> = {
   'Barbell Back Squat': ['knees', 'lower_back'], 'Dumbbell Goblet Squat': ['knees'], 'Hack Squat': ['knees'], 'Leg Extension': ['knees'],
   'Barbell Curl': ['wrists', 'elbows'], 'Skull Crusher': ['elbows', 'wrists'],
 };
+// Hips, ankles and neck: the clear cases only.
+for (const [n, a] of [
+  ['Barbell Back Squat', ['hips', 'ankles', 'neck']], ['Dumbbell Goblet Squat', ['hips', 'ankles']], ['Hack Squat', ['hips']],
+  ['Romanian Deadlift', ['hips']], ['Dumbbell Romanian Deadlift', ['hips']], ['Dumbbell Lunge', ['knees', 'hips', 'ankles']],
+  ['Standing Calf Raise', ['ankles']], ['Overhead Press', ['neck']],
+] as [string, Area[]][]) LOADS[n] = [...new Set([...(LOADS[n] ?? []), ...a])];
 
 /** Gentler options, in order of preference. The first one that doesn't load a chosen area and isn't already in the workout wins. */
 const GENTLER: Record<string, string[]> = {
@@ -39,7 +68,7 @@ const GENTLER: Record<string, string[]> = {
   'Barbell Row': ['Chest-Supported Machine Row', 'Seated Cable Row'],
   'Romanian Deadlift': ['Leg Curl'], 'Dumbbell Romanian Deadlift': ['Leg Curl'], 'Machine Back Extension': ['Leg Curl', 'Cable Crunch'],
   'Barbell Back Squat': ['Leg Press', 'Leg Curl'], 'Dumbbell Goblet Squat': ['Leg Press', 'Leg Curl'], 'Hack Squat': ['Leg Press', 'Leg Curl'],
-  'Leg Extension': ['Leg Curl'],
+  'Leg Extension': ['Leg Curl'], 'Dumbbell Lunge': ['Leg Press', 'Leg Curl'],
   'Barbell Curl': ['Hammer Curl', 'Cable Hammer Curl'], 'Skull Crusher': ['Tricep Pushdown', 'Cable Tricep Pushdown'],
 };
 
@@ -68,12 +97,12 @@ export function applyAreas(tpl: PlanTemplate, areas: Area[]): Personalized {
   let swapped = 0, kept = 0; const map: Record<string, string> = {};
   const days = tpl.days.map(d => {
     const taken = new Set(d.exercises.filter(e => !loads(e[0], areas)).map(e => e[0]));
-    const out: typeof d.exercises = [];
+    const out: typeof d.exercises = []; let dropped = 0;
     for (const e of d.exercises) {
       if (!loads(e[0], areas)) { out.push(e); continue; }
       const pick = (GENTLER[e[0]] ?? []).find(n => !loads(n, areas) && !taken.has(n));
       if (pick) { taken.add(pick); swapped++; map[pick] = e[0]; out.push([pick, e[1], e[2], e[3]]); }
-      else if (d.exercises.length > 3) { /* no gentler option left and the workout can spare it */ }
+      else if (d.exercises.length - dropped > 3) dropped++; // no gentler option left and the workout can spare it
       else { kept++; out.push(e); }
     }
     return { ...d, exercises: out };
@@ -82,7 +111,7 @@ export function applyAreas(tpl: PlanTemplate, areas: Area[]): Personalized {
   const list = names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
   const notes = [`Because you mentioned your ${list}, ${swapped ? 'exercises that load them most start as gentler versions' : 'we kept an eye on exercises that load them'}.`];
   if (kept) notes.push('A few had no gentler option, so they are kept. Go light, and swap them if they bother you.');
-  notes.push("This isn't medical advice. If something hurts (not just effort), stop and swap it, and see a professional if pain continues.");
+  notes.push("Rest comes first. If something hurts (not just effort), stop and swap it, and see a doctor or physical therapist if pain continues. Forgeload doesn't diagnose or treat injuries.");
   return { tpl: { ...tpl, days }, notes, swapped: map };
 }
 
