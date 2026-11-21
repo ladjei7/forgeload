@@ -729,7 +729,7 @@ export default function LogPage() {
               <summary className="cursor-pointer list-none py-1">
                 <div className="text-[11px] uppercase tracking-wide text-fl-tx2">Target</div>
                 <div className="text-2xl font-semibold leading-tight tracking-tight">
-                  {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : `Find your ${ex.rep_min}-${ex.rep_max} rep weight`) : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} lb` : 'add load'} × ${t.reps}`)}
+                  {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : `Find your ${ex.rep_min}-${ex.rep_max} rep weight`) : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} ${unitLabel(unit)}` : 'add load'} × ${t.reps}`)}
                 </div>
                 <span className="text-xs text-fl-tx2 underline">why this target?</span>
               </summary>
