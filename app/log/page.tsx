@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 import { suggestTarget, defaultRestSeconds, workingWeight, latestForTarget, type PrevSet } from '../lib/progression';
 import { DELOAD_UNTIL_KEY, DELOAD_HINT, deloadByDefault, weekEnd } from '../lib/deload';
+import { savePrefs } from '../lib/prefs';
 import { strength } from '../lib/progressStats';
 import { nextDayId } from '../lib/rotation';
 import { chooseNext, localDate } from '../lib/schedule';
@@ -279,10 +280,17 @@ export default function LogPage() {
       try {
         const [{ data: pData }, { data: prefs }] = await Promise.all([
           supabase.from('workout_plans').select('id, name, is_active').order('created_at'),
-          supabase.from('user_training_prefs').select('ask_effort, track_rir').maybeSingle(),
+          supabase.from('user_training_prefs').select('*').maybeSingle(),
         ]);
-        const p = prefs as { ask_effort: boolean | null; track_rir: boolean | null } | null;
+        const p = prefs as { ask_effort: boolean | null; track_rir: boolean | null; deload_until?: string | null } | null;
         if (p) { setAskEffort(p.ask_effort !== false); setTrackRir(p.track_rir === true); }
+        // "Rest of this week as deload" lives on the account (any device); this device keeps a copy for offline.
+        if (p && p.deload_until !== undefined) {
+          lsSet(DELOAD_UNTIL_KEY, p.deload_until);
+          const on = deloadByDefault(p.deload_until, localDateString());
+          setDeloadWeek(on);
+          setDeload(on); // a resumed workout below replaces this with its own saved value
+        }
         const planList = (pData ?? []) as Plan[];
         setPlans(planList);
         const savedRest = lsGet(LS.rest);
@@ -414,12 +422,14 @@ export default function LogPage() {
   /** Mark this workout as a deload (or not). Saved through the outbox, so it works offline. Never blocks logging. */
   function toggleDeload(on: boolean) {
     setDeload(on);
-    if (!on && deloadWeek) { setDeloadWeek(false); lsSet(DELOAD_UNTIL_KEY, null); }
+    if (!on && deloadWeek) { setDeloadWeek(false); lsSet(DELOAD_UNTIL_KEY, null); void savePrefs({ deload_until: null }); }
     if (session) { addOp({ opId: newId(), kind: 'deload', sessionId: session.id, at: clockNow(), isDeload: on }); void syncNow(); }
   }
   function toggleDeloadWeek(on: boolean) {
     setDeloadWeek(on);
-    lsSet(DELOAD_UNTIL_KEY, on ? weekEnd(localDateString()) : null);
+    const until = on ? weekEnd(localDateString()) : null;
+    lsSet(DELOAD_UNTIL_KEY, until);
+    void savePrefs({ deload_until: until }); // to the account, so other devices follow; the device copy covers offline
     if (on && !deload) toggleDeload(true);
   }
 
@@ -737,7 +747,7 @@ export default function LogPage() {
             <>
               <p className="mt-1 text-xs leading-relaxed text-fl-tx2">{DELOAD_HINT}</p>
               <label className="mt-2 flex items-center justify-between gap-3 text-xs">
-                <span>Also the rest of this week (through Sunday, on this device)</span>
+                <span>Also the rest of this week (through Sunday)</span>
                 <input type="checkbox" checked={deloadWeek} onChange={e => toggleDeloadWeek(e.target.checked)} className="h-4 w-4 accent-[var(--fl-acc)]" />
               </label>
             </>

@@ -3,7 +3,7 @@
 -- Used to create the development project (forgeload-dev). Safe to run on an EMPTY project only.
 -- To match production today, apply supabase/migrations/011 onward in order after this file
 -- (011 schedule and effort, 012 session day name, 013 session ownership, 014 training prefs,
--- 015 search ranking, 016 workout_sessions.is_deload, 017 cardio tags).
+-- 015 search ranking, 016 workout_sessions.is_deload, 017 cardio tags, 018 prefs deload_until).
 
 create extension if not exists pg_trgm with schema extensions;
 
