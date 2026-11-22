@@ -32,6 +32,17 @@ export const RULES = {
    */
   stall: { sessions: 3 },
   /**
+   * Notifications (all opt-in).
+   * defaultReminderTime: early evening, when most people train after work.
+   * dueWindowMinutes: the reminder job runs every 5 minutes; a 60-minute window means a missed run or
+   *   a slow server doesn't lose the day's message, and the send log keeps it to one.
+   * comebackDays / comebackMax: one friendly message after a week without training, one follow-up a
+   *   week later, then silence until they train again (more than that reads as nagging).
+   * restMaxLateSeconds: a "Rest complete" arriving 30 s late would land mid-set, so it is dropped.
+   * restEarlyMs: alerts may go out up to 300 ms early to absorb network time.
+   */
+  push: { defaultReminderTime: '17:00', dueWindowMinutes: 60, comebackDays: 7, comebackMax: 2, restMaxLateSeconds: 20, restEarlyMs: 300 },
+  /**
    * Newer lifters: at most 4 sets per exercise and 20 working sets per session, even when they pick
    * a long session. Early progress comes from practice, and recovery is the limit; 20 sets is the top
    * of the usual beginner range. The extra time becomes longer rests, not more sets.
