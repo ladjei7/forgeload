@@ -77,7 +77,7 @@ export default function NotificationSettings() {
   }
   async function disable() {
     setBusy(true); await disableNotifications(); setBusy(false);
-    setRegistered(false); setRest(false); setNote({ ok: true, text: 'Notifications are off on this device.' });
+    setRegistered(false); setRest(false); setNote({ ok: true, text: 'Push notifications are off on this device. The in-app rest sound still works.' });
   }
   async function toggleRest() {
     const next = !rest; setRest(next);
@@ -139,7 +139,7 @@ export default function NotificationSettings() {
           <p className="pt-1 text-xs text-fl-tx2">Your weights and reps stay off the lock screen. Reminders go to every device with notifications on.</p>
           <div className="flex flex-col gap-1 pt-2">
             <button onClick={test} disabled={busy} className="h-11 w-full rounded-xl bg-fl-s2 font-semibold disabled:opacity-60">Send test notification</button>
-            <button onClick={disable} disabled={busy} className="h-10 self-center px-3 text-sm font-semibold text-fl-tx2">Turn off on this device</button>
+            <button onClick={disable} disabled={busy} className="h-10 self-center px-3 text-sm font-semibold text-fl-tx2">Turn off push notifications on this device</button>
           </div>
         </div>
       )}
