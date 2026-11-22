@@ -9,7 +9,7 @@
 --   push_cron_secret                             created here, shared only between the scheduler and the function
 --   push_function_url                            this project's function URL (set once per environment)
 
-create extension if not exists pg_net;
+create extension if not exists pg_net schema extensions;
 create extension if not exists pg_cron;
 
 -- Public settings the app needs (the VAPID public key). One row.
