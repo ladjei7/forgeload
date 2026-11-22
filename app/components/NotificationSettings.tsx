@@ -14,7 +14,7 @@ const TEST_DB = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').includes('lwngtnwpy
 
 function Switch({ on, title, sub, onToggle, disabled }: { on: boolean; title: string; sub: string; onToggle: () => void; disabled?: boolean }) {
   return (
-    <button role="switch" aria-checked={on} onClick={onToggle} disabled={disabled} className="flex w-full items-center gap-3 rounded-xl py-2 text-left disabled:opacity-50">
+    <button role="switch" aria-checked={on} onClick={onToggle} disabled={disabled} className="flex w-full items-start gap-3 rounded-xl py-2 text-left disabled:opacity-50">
       <span className="min-w-0 flex-1"><span className="block font-semibold">{title}</span><span className="block text-sm text-fl-tx2">{sub}</span></span>
       <span aria-hidden="true" className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${on ? 'bg-fl-acc' : 'border border-fl-field bg-fl-s2'}`}>
         <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
@@ -93,11 +93,11 @@ export default function NotificationSettings() {
   }
 
   const denied = permission() === 'denied';
+  const sound = <Switch on={beep} onToggle={() => { setBeep(!beep); setBeepOn(!beep); }} title="In-app rest sound" sub="Play a beep when rest ends while Forgeload is on screen." />;
   return (
     <section className="rounded-2xl border border-fl-line bg-fl-s1 p-5">
       {TEST_DB && <p className="mb-2 inline-block rounded-full bg-fl-tint px-3 py-1 text-xs font-bold">Test database (forgeload-dev)</p>}
-      <h2 className="mb-1 text-lg font-bold">Notifications</h2>
-      <p className="mb-3 text-sm text-fl-tx2">All optional and off until you turn them on. They never show your weights or reps on the lock screen.</p>
+      <h2 className="mb-3 text-lg font-bold">Notifications</h2>
 
       {!registered && (
         <>
@@ -105,14 +105,16 @@ export default function NotificationSettings() {
           {support === 'ok' && denied && <p className="mt-2 text-sm text-fl-tx2">Notifications are blocked for Forgeload. Allow them in your phone or browser settings, then tap Enable.</p>}
           {support === 'unsupported' && <p className="text-sm text-fl-tx2">This browser can&apos;t show notifications.</p>}
           {(support === 'ios-needs-home-screen' || (isIos() && support !== 'ok')) && <IphoneGuide />}
+          <div className="mt-2">{sound}</div>
         </>
       )}
 
       {registered && (
         <div className="space-y-1">
-          <Switch on={rest} onToggle={toggleRest} title="Rest timer alerts" sub="When rest ends, even if Forgeload is in the background or your phone is locked. This device only." />
+          <Switch on={rest} onToggle={toggleRest} title="Rest timer notifications" sub="Get an alert on this device when rest ends, even while using another app or with your phone locked." />
+          {sound}
           <Switch on={rem.workout_reminders} onToggle={() => patch({ workout_reminders: !rem.workout_reminders })} title="Workout reminders"
-            sub={mode === 'weekly' ? 'On your scheduled training days.' : 'On the days you pick below. It shows your next workout; it never skips one.'} />
+            sub={mode === 'weekly' ? 'Get a reminder for your next workout on your scheduled days.' : 'Get a reminder for your next workout on the days you choose.'} />
           {rem.workout_reminders && (
             <div className="mb-2 ml-1 space-y-2 border-l-2 border-fl-line pl-3">
               <label className="flex items-center justify-between gap-3 text-sm">
@@ -132,19 +134,16 @@ export default function NotificationSettings() {
             </div>
           )}
           {hasWorkout
-            ? <Switch on={rem.comeback} onToggle={() => patch({ comeback: !rem.comeback })} title="Comeback reminders" sub="If a week goes by without a workout, one friendly nudge, and at most one more a week later." />
+            ? <Switch on={rem.comeback} onToggle={() => patch({ comeback: !rem.comeback })} title="Comeback reminders" sub="Get a nudge after a week away, with one follow-up at most." />
             : <p className="py-2 text-sm text-fl-tx2"><span className="font-semibold text-fl-tx">Comeback reminders</span> become available after your first workout.</p>}
-          <p className="pt-1 text-xs text-fl-tx2">Reminders go to every device where notifications are on.</p>
-          <div className="flex gap-2 pt-2">
-            <button onClick={test} disabled={busy} className="h-11 flex-1 rounded-xl bg-fl-s2 font-semibold disabled:opacity-60">Send test notification</button>
-            <button onClick={disable} disabled={busy} className="h-11 rounded-xl px-3 text-sm font-semibold text-fl-tx2">Turn off here</button>
+          <p className="pt-1 text-xs text-fl-tx2">Your weights and reps stay off the lock screen. Reminders go to every device with notifications on.</p>
+          <div className="flex flex-col gap-1 pt-2">
+            <button onClick={test} disabled={busy} className="h-11 w-full rounded-xl bg-fl-s2 font-semibold disabled:opacity-60">Send test notification</button>
+            <button onClick={disable} disabled={busy} className="h-10 self-center px-3 text-sm font-semibold text-fl-tx2">Turn off on this device</button>
           </div>
         </div>
       )}
 
-      <div className="mt-2 border-t border-fl-line pt-2">
-        <Switch on={beep} onToggle={() => { setBeep(!beep); setBeepOn(!beep); }} title="Beep when rest ends" sub="While Forgeload is open on screen. No permission needed." />
-      </div>
       {note && <p role={note.ok ? 'status' : 'alert'} className={`mt-2 text-sm ${note.ok ? 'text-fl-ok' : 'text-fl-bad'}`}>{note.ok ? '' : '⚠ '}{note.text}</p>}
     </section>
   );
