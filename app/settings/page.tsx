@@ -9,6 +9,7 @@ import type { Comfort } from '../lib/comfort';
 import { AREAS, detectAreas } from '../lib/personalize';
 import { getUnit, setUnitLocal, type Unit } from '../lib/units';
 import { savePrefs } from '../lib/prefs';
+import NotificationSettings from '../components/NotificationSettings';
 
 const COMFORTS: { id: Comfort; title: string; sub: string }[] = [
   { id: 'machines', title: 'Mostly machines', sub: 'Guided movements while getting comfortable.' },
@@ -170,6 +171,8 @@ export default function SettingsPage() {
         ))}
         {effortMsg && <p role="status" className="mt-2 text-sm text-fl-ok">{effortMsg}</p>}
       </section>
+
+      <NotificationSettings />
 
       <section className={card}>
         <h2 className="mb-1 text-lg font-bold">Appearance</h2>

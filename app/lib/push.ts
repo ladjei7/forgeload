@@ -161,3 +161,20 @@ export function beep() {
     }
   } catch { /* ignore */ }
 }
+
+/**
+ * Keep the server's copy of this device's subscription current (browsers can rotate it). Runs at most
+ * once a day after sign-in, only if notifications are already allowed. Never asks for permission.
+ */
+export async function refreshSubscription(): Promise<void> {
+  try {
+    if (pushSupport() !== 'ok' || permission() !== 'granted') return;
+    const last = Number(localStorage.getItem('fl-push-refreshed') ?? 0);
+    if (Date.now() - last < 24 * 3600 * 1000) return;
+    const reg = await navigator.serviceWorker.getRegistration('/');
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) return;
+    const r = await call<{ ok?: boolean }>('subscribe', { subscription: sub.toJSON(), platform: isIos() ? 'ios' : /Android/i.test(navigator.userAgent) ? 'android' : 'other' });
+    if (r?.ok) localStorage.setItem('fl-push-refreshed', String(Date.now()));
+  } catch { /* best effort */ }
+}

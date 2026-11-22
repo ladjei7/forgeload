@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { supabase, RECOVERY_KEY } from './lib/supabase';
 import { ensureInit, startAutoSync, syncNow } from './lib/outboxSync';
 import { setUnitLocal } from './lib/units';
+import { refreshSubscription } from './lib/push';
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -29,6 +30,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           void ensureInit().then(() => { startAutoSync(); void syncNow(); });
           // The weight unit follows the account, so every device shows the same.
           supabase.from('user_training_prefs').select('*').maybeSingle().then(({ data: p }) => { if (p?.unit === 'kg' || p?.unit === 'lb') setUnitLocal(p.unit); }, () => {});
+          void refreshSubscription();
         }
       }
     });

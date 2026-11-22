@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase';
 import { suggestTarget, defaultRestSeconds, workingWeight, latestForTarget, type PrevSet } from '../lib/progression';
 import { DELOAD_UNTIL_KEY, DELOAD_HINT, deloadByDefault, weekEnd } from '../lib/deload';
 import { savePrefs } from '../lib/prefs';
+import { scheduleRestAlert, cancelRestAlert, beepOn, beep, unlockAudio, deviceRegistered, restAlertsOn } from '../lib/push';
 import { strength } from '../lib/progressStats';
 import { nextDayId } from '../lib/rotation';
 import { chooseNext, localDate } from '../lib/schedule';
@@ -338,6 +339,37 @@ export default function LogPage() {
     return () => clearInterval(t);
   }, [session]);
 
+  // Rest-end alerts. The countdown always runs from a fixed end time (above). On top of that:
+  //  - in-app beep at 0 while Forgeload is on screen (this device setting, default on);
+  //  - a server push (if this device turned on rest timer alerts) for when Forgeload is in the background
+  //    or the phone is locked. Any change to the timer replaces the scheduled push; skipping, finishing or
+  //    pausing cancels it. If Forgeload is still on screen 1.5 s before the end, the push is cancelled and
+  //    the beep takes over, so there is one alert, not two. None of this ever blocks logging.
+  const restPush = useRef({ on: false, end: null as number | null, handedToBeep: false, beepedFor: null as number | null });
+  useEffect(() => { void (async () => { restPush.current.on = (await deviceRegistered()) && (await restAlertsOn()); })(); }, []);
+  const sessionIdForPush = session?.id ?? null;
+  useEffect(() => {
+    const rp = restPush.current;
+    const t = setTimeout(() => {
+      const active = rest && rest.paused === undefined && rest.end > Date.now() + 1500;
+      if (active && rp.on) { if (rp.end !== rest!.end) { scheduleRestAlert(rest!.end, sessionIdForPush); rp.end = rest!.end; rp.handedToBeep = false; } }
+      else if (rp.end !== null) { cancelRestAlert(); rp.end = null; }
+    }, 400); // coalesces quick taps like +15 s, +15 s
+    return () => clearTimeout(t);
+  }, [rest, sessionIdForPush]);
+  useEffect(() => {
+    const again = () => { const rp = restPush.current; if (rp.on && rest && rest.paused === undefined && rest.end > Date.now() + 1500) { scheduleRestAlert(rest.end, sessionIdForPush); rp.end = rest.end; } };
+    window.addEventListener('online', again); // lost signal while resting: schedule again once back
+    return () => window.removeEventListener('online', again);
+  }, [rest, sessionIdForPush]);
+  useEffect(() => {
+    if (!rest || rest.paused !== undefined) return;
+    const rp = restPush.current; const left = rest.end - now;
+    const onScreen = typeof document !== 'undefined' && document.visibilityState === 'visible';
+    if (onScreen && left <= 1500 && rp.end === rest.end && !rp.handedToBeep) { rp.handedToBeep = true; cancelRestAlert(); rp.end = null; }
+    if (onScreen && left <= 0 && rp.beepedFor !== rest.end) { rp.beepedFor = rest.end; if (beepOn()) beep(); }
+  }, [now, rest]);
+
   // Keep unsaved typing so a refresh doesn't lose it.
   useEffect(() => {
     if (!session) return;
@@ -469,6 +501,7 @@ export default function LogPage() {
   }
 
   async function toggleSet(ex: PlanEx, i: number) {
+    unlockAudio(); // a tap: lets the rest-end beep play later
     if (!session) return;
     const key = `${ex.id}:${i}`;
     const t0 = clockNow();
