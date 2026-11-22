@@ -1,4 +1,5 @@
 import { show, label, type Unit } from './units.ts';
+import { workingWeight } from './progression.ts';
 
 // Progress numbers, computed from finished workouts. Pure functions only (unit tested).
 //
@@ -11,7 +12,12 @@ export type PLog = { exercise_name: string; exercise_id?: string | null; exercis
 /** is_deload: a planned light session. Shown on the chart, never a record, never sets the best or the starting point. */
 export type PSession = { id: string; completed_at: string; is_deload?: boolean | null; exercise_logs: PLog[] | null };
 
-export type Point = { sessionId: string; date: Date; weight: number; reps: number; value: number; record: boolean; deload: boolean };
+/**
+ * One workout of one lift. weight/reps/value: the best set (strength estimate). workWeight: the weight
+ * actually worked at (most sets). weightUp: workWeight is higher than at the previous non-deload
+ * workout, so a dip in the estimate right after it is a planned step up, not a loss.
+ */
+export type Point = { sessionId: string; date: Date; weight: number; reps: number; value: number; record: boolean; deload: boolean; workWeight: number; weightUp: boolean };
 export type LiftProgress = {
   key: string; name: string; kind: 'weight' | 'reps';
   points: Point[];            // oldest first, one per workout
@@ -37,7 +43,7 @@ export function weekStartOf(d: Date): Date {
 
 export function liftProgress(sessions: PSession[]): LiftProgress[] {
   const ordered = [...sessions].sort((a, b) => +new Date(a.completed_at) - +new Date(b.completed_at));
-  const lifts = new Map<string, { name: string; pts: Omit<Point, 'record'>[]; bodyweight: boolean }>();
+  const lifts = new Map<string, { name: string; pts: Omit<Point, 'record' | 'weightUp'>[]; bodyweight: boolean }>();
   for (const s of ordered) {
     const date = new Date(s.completed_at);
     for (const log of s.exercise_logs ?? []) {
@@ -56,7 +62,8 @@ export function liftProgress(sessions: PSession[]): LiftProgress[] {
         if (v > bv || (v === bv && (x.weight ?? 0) > (best.weight ?? 0))) best = x;
       }
       const prevSame = entry.pts.find(p => p.sessionId === s.id);
-      const pt = { sessionId: s.id, date, weight: best.weight ?? 0, reps: best.reps ?? 0, value: 0, deload: !!s.is_deload };
+      const workWeight = workingWeight(sets.map(x => ({ weight: x.weight ?? 0, reps: x.reps ?? 0 })));
+      const pt = { sessionId: s.id, date, weight: best.weight ?? 0, reps: best.reps ?? 0, value: 0, deload: !!s.is_deload, workWeight };
       if (prevSame) { // same exercise twice in one workout: keep the better one
         if (strength(pt.weight, pt.reps) > strength(prevSame.weight, prevSame.reps)) Object.assign(prevSame, pt);
       } else entry.pts.push(pt);
@@ -66,13 +73,15 @@ export function liftProgress(sessions: PSession[]): LiftProgress[] {
   const out: LiftProgress[] = [];
   for (const [key, e] of lifts) {
     const kind: 'weight' | 'reps' = e.bodyweight ? 'reps' : 'weight';
-    let top = -1; let seen = 0;
+    let top = -1; let seen = 0; let lastWork: number | null = null;
     const points: Point[] = e.pts.map(p => {
       const value = kind === 'weight' ? strength(p.weight, p.reps) : p.reps;
-      if (p.deload) return { ...p, value, record: false }; // a deload is never a record and never moves the bar
+      if (p.deload) return { ...p, value, record: false, weightUp: false }; // a deload is never a record and never moves the bar
       const record = seen > 0 && value > top; // the first time is a starting point, not a record
-      top = Math.max(top, value); seen++;
-      return { ...p, value, record };
+      // Compared with the last NON-deload workout, so a deload in between doesn't break it.
+      const weightUp = kind === 'weight' && lastWork !== null && p.workWeight > lastWork;
+      top = Math.max(top, value); seen++; lastWork = p.workWeight;
+      return { ...p, value, record, weightUp };
     });
     const real = points.filter(p => !p.deload);
     const pool = real.length ? real : points;
@@ -118,15 +127,21 @@ export function setLabel(p: { weight: number; reps: number }, unit: Unit = 'lb')
 }
 
 /**
- * How a lift has improved since the first time, in words anyone can read at a glance:
- * "+20 lb" when the best set is heavier, "+3 reps" at the same weight, "More reps" when the best set
- * is lighter but clearly stronger overall. Null when there's nothing to celebrate yet.
+ * How a lift has improved since the first time, in words anyone can read at a glance. With double
+ * progression a weight increase comes with fewer reps, so it is credited on its own:
+ * "+20 lb" when the weight you work at (or your best set) went up, "+3 reps" at the same weight,
+ * "More reps" when the best set is lighter but clearly stronger. Never describes a step up as a loss;
+ * null when there's nothing to celebrate yet.
  */
 export function improvement(l: LiftProgress, unit: Unit = 'lb'): string | null {
-  if (l.points.filter(p => !p.deload).length < 2 || l.best.value <= l.first.value) return null;
-  if (l.kind === 'reps') return `+${l.best.reps - l.first.reps} reps`;
-  const dw = Math.round((show(l.best.weight, unit) - show(l.first.weight, unit)) * 10) / 10;
-  if (dw > 0) return `+${dw} ${label(unit)}`;
+  const real = l.points.filter(p => !p.deload);
+  if (real.length < 2) return null;
+  if (l.kind === 'reps') return l.best.value > l.first.value ? `+${l.best.reps - l.first.reps} reps` : null;
+  const workUp = Math.round((show(Math.max(...real.map(p => p.workWeight)), unit) - show(real[0].workWeight, unit)) * 10) / 10;
+  const bestUp = Math.round((show(l.best.weight, unit) - show(l.first.weight, unit)) * 10) / 10;
+  const up = Math.max(workUp, l.best.value > l.first.value ? bestUp : 0);
+  if (up > 0) return `+${up} ${label(unit)}`;
+  if (l.best.value <= l.first.value) return null;
   if (l.best.weight === l.first.weight) return `+${l.best.reps - l.first.reps} reps`;
   return 'More reps';
 }
@@ -136,7 +151,7 @@ export function headline(lifts: LiftProgress[], s: Summary): string {
   if (s.workouts === 0) return '';
   if (s.workouts === 1) return 'Your first workout is in. These are your starting numbers: beat any of them next time and it counts as a record.';
   const tracked = lifts.filter(l => l.points.filter(p => !p.deload).length > 1);
-  const up = tracked.filter(l => l.best.value > l.first.value).length;
+  const up = tracked.filter(l => improvement(l) !== null).length; // a weight increase counts as stronger
   if (!tracked.length) return `${s.workouts} workouts done. Repeat an exercise and you'll see it improve here.`;
   if (!up) return `${s.workouts} workouts done. Records come from beating your best set, one rep or one small jump at a time.`;
   return `You're stronger on ${up} of ${tracked.length} ${tracked.length === 1 ? 'lift' : 'lifts'} since you started.`;

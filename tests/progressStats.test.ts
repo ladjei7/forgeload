@@ -102,3 +102,26 @@ test('progress in plain words: +lb, +reps, and a headline sentence', () => {
   assert.equal(headline(lifts, s), "You're stronger on 3 of 4 lifts since you started.");
   assert.match(headline(lifts, { ...s, workouts: 1 }), /starting numbers/);
 });
+
+test('weight increases are marked on the chart and credited, even when the estimate dips', () => {
+  const W = (id: string, iso: string, w: number, reps: number[], is_deload = false): PSession =>
+    ({ id, completed_at: iso, is_deload, exercise_logs: [{ exercise_name: 'Row', exercise_id: 'row', exercise_sets: reps.map(r => ({ weight: w, reps: r })) }] });
+  // 100 x 12 then 105 x 8: the estimate dips (140 -> 133) but the second point is a step up
+  const [a] = liftProgress([W('1', '2026-11-02T18:00:00', 100, [12, 12, 12]), W('2', '2026-11-09T18:00:00', 105, [8, 8, 8])]);
+  assert.ok(a.points[1].value < a.points[0].value);
+  assert.deepEqual(a.points.map(p => p.weightUp), [false, true]);
+  assert.equal(improvement(a), '+5 lb'); // not null, never "weaker"
+  assert.match(headline([a], { workouts: 2, thisMonth: 2, weekStreak: 2, recordsLast30: 0 }), /stronger on 1 of 1/);
+  // same weight with more reps: not a weight increase
+  const [b] = liftProgress([W('1', '2026-11-02T18:00:00', 100, [10, 9, 8]), W('2', '2026-11-09T18:00:00', 100, [10, 10, 9])]);
+  assert.deepEqual(b.points.map(p => p.weightUp), [false, false]);
+  // working weight, not the best set: a heavy single first set does not count as moving up
+  const heavy: PSession = { id: '2', completed_at: '2026-11-09T18:00:00', exercise_logs: [{ exercise_name: 'Row', exercise_id: 'row', exercise_sets: [{ weight: 110, reps: 6 }, { weight: 100, reps: 10 }, { weight: 100, reps: 10 }] }] };
+  const [c] = liftProgress([W('1', '2026-11-02T18:00:00', 100, [10, 10]), heavy]);
+  assert.equal(c.points[1].weightUp, false);
+  // a deload in between: compared with the last non-deload workout
+  const [d] = liftProgress([W('1', '2026-11-02T18:00:00', 100, [12, 12]), W('2', '2026-11-09T18:00:00', 80, [8, 8], true), W('3', '2026-11-16T18:00:00', 105, [8, 8])]);
+  assert.deepEqual(d.points.map(p => [p.deload, p.weightUp]), [[false, false], [true, false], [false, true]]);
+  const [e] = liftProgress([W('1', '2026-11-02T18:00:00', 100, [12, 12]), W('2', '2026-11-09T18:00:00', 80, [8, 8], true), W('3', '2026-11-16T18:00:00', 100, [12, 12])]);
+  assert.equal(e.points[2].weightUp, false); // back at 100 after an 80 deload is not "moving up"
+});

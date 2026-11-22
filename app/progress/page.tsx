@@ -100,7 +100,7 @@ export default function ProgressPage() {
           {/* Every lift */}
           <section className={ui.card}>
             <h2 className={ui.h2}>Your lifts</h2>
-            <p className={`${ui.sub} mb-1`}>Your first time next to your best set. Tap a lift to see every workout.</p>
+            <p className={`${ui.sub} mb-1`}>Your first time next to your best set. Tap a lift to see every workout; ▲ marks a step up in weight.</p>
             <ul className="divide-y divide-fl-line">
               {shown.map(l => {
                 const isOpen = open === l.key;
@@ -130,7 +130,7 @@ export default function ProgressPage() {
                             {[...l.points].reverse().slice(0, 10).map(p => (
                               <tr key={p.sessionId} className="border-t border-fl-line">
                                 <td className="py-1.5">{fmt(p.date)}</td>
-                                <td className="py-1.5 text-right">{p.record && <span className="mr-1.5 text-xs font-semibold text-fl-ok">Record</span>}{setLabel(p)}</td>
+                                <td className="py-1.5 text-right">{p.deload && <span className="mr-1.5 text-xs font-semibold text-fl-tx2">Deload</span>}{p.weightUp && <span className="mr-1.5 text-xs font-semibold text-fl-ok">▲ Moved up</span>}{p.record && <span className="mr-1.5 text-xs font-semibold text-fl-ok">Record</span>}{setLabel(p)}</td>
                               </tr>
                             ))}
                           </tbody>

@@ -4,12 +4,13 @@
 // workout; the same numbers are always listed in the table under the chart.
 import { useState } from 'react';
 import { setLabel, type Point } from '../lib/progressStats';
-import { show, type Unit } from '../lib/units';
+import { show, label, type Unit } from '../lib/units';
 
 const W = 320, H = 150, L = 12, R = 14, T = 14, B = 22;
 
 export default function LiftChart({ points: raw, kind, name, unit = 'lb' }: { points: Point[]; kind: 'weight' | 'reps'; name: string; unit?: Unit }) {
   const [hover, setHover] = useState<number | null>(null);
+  const unitName = label(unit);
   // Strength estimates are computed in pounds; shown in the person's unit.
   const points = kind === 'weight' ? raw.map(p => ({ ...p, value: show(p.value, unit) })) : raw;
   // Deload workouts are planned light weeks: shown as hollow, dimmed points off the line, so they
@@ -40,11 +41,11 @@ export default function LiftChart({ points: raw, kind, name, unit = 'lb' }: { po
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between text-sm" aria-live="polite">
-        <span className="font-semibold tabular-nums text-fl-tx">{setLabel(cur, unit)}{cur.record && <span className="ml-1.5 text-xs font-semibold text-fl-ok">New record</span>}{cur.deload && <span className="ml-1.5 text-xs font-semibold text-fl-tx2">Deload</span>}</span>
+        <span className="font-semibold tabular-nums text-fl-tx">{setLabel(cur, unit)}{cur.record && <span className="ml-1.5 text-xs font-semibold text-fl-ok">New record</span>}{cur.deload && <span className="ml-1.5 text-xs font-semibold text-fl-tx2">Deload</span>}{cur.weightUp && <span className="ml-1.5 text-xs font-semibold text-fl-ok">▲ Moved up to {show(cur.workWeight, unit)} {unitName}</span>}</span>
         <span className="text-xs tabular-nums text-fl-tx2">{fmt(cur.date)}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="block w-full touch-none select-none outline-none" role="img" tabIndex={0}
-        aria-label={`${name}: ${points.length} workouts${points.length > line.length ? ` (${points.length - line.length} deload)` : ''}, best set ${setLabel(points[0], unit)} on ${fmt(points[0].date)}, latest ${setLabel(last, unit)} on ${fmt(last.date)}. Use left and right arrow keys to read each workout.`}
+        aria-label={`${name}: ${points.length} workouts${points.length > line.length ? ` (${points.length - line.length} deload)` : ''}${points.some(p => p.weightUp) ? `, moved up in weight ${points.filter(p => p.weightUp).length} ${points.filter(p => p.weightUp).length === 1 ? 'time' : 'times'}` : ''}, best set ${setLabel(points[0], unit)} on ${fmt(points[0].date)}, latest ${setLabel(last, unit)} on ${fmt(last.date)}. Use left and right arrow keys to read each workout.`}
         onPointerMove={e => nearest(e.clientX, e.currentTarget)} onPointerDown={e => nearest(e.clientX, e.currentTarget)}
         onPointerLeave={() => setHover(null)}
         onKeyDown={e => {
@@ -61,6 +62,11 @@ export default function LiftChart({ points: raw, kind, name, unit = 'lb' }: { po
         <text x={W - R} y={H - 6} fontSize="10" fill="var(--fl-tx2)" textAnchor="end">{fmt(last.date)}</text>
         <path d={area} fill="var(--fl-acc)" opacity="0.1" />
         <path d={path} fill="none" stroke="var(--fl-acc)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {/* A step up in weight: a small triangle above the point (shape, not just color). The estimate
+            often dips right after one, because the reps start over at the bottom of the range. */}
+        {points.filter(p => p.weightUp).map(p => (
+          <path key={'up' + p.sessionId} d={`M${(x(p) - 4).toFixed(1)},${(y(p.value) - 8).toFixed(1)} l4,-6 l4,6 z`} fill="var(--fl-ok)" />
+        ))}
         {points.filter(p => p.deload).map(p => (
           <circle key={p.sessionId} cx={x(p)} cy={y(p.value)} r="3.5" fill="var(--fl-s1)" stroke="var(--fl-tx2)" strokeWidth="1.5" opacity="0.8" />
         ))}
