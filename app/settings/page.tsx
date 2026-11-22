@@ -197,7 +197,7 @@ export default function SettingsPage() {
       </section>
 
       <section className={card}>
-        <h2 className="mb-1 text-lg font-bold">Your data is yours</h2>
+        <h2 className="mb-1 text-lg font-bold">Your data</h2>
         <p className="mb-4 text-sm text-fl-tx2">Download everything you have logged. The JSON file has your plans, workouts and custom exercises. The CSV has one row per set, ready for a spreadsheet.</p>
         <div className="space-y-2">
           <button className={btn} disabled={!!busy} onClick={() => exportAs('json')}>{busy === 'json' ? 'Preparing...' : 'Download all data (JSON)'}</button>
