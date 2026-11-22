@@ -85,7 +85,8 @@ export function decide(now: Date, prefs: ReminderPrefs, s: ReminderState): Messa
 }
 
 function comebackDue(prefs: ReminderPrefs, s: ReminderState, today: string): Message | null {
-  if (!prefs.comeback || s.sentComebackToday || !s.lastCompletedDate) return null; // never trained: no nudge
+  // Never trained: no nudge. A reminder already went out today: one message a day is enough.
+  if (!prefs.comeback || s.sentComebackToday || s.sentReminderToday || !s.lastCompletedDate) return null;
   const away = daysBetween(s.lastCompletedDate, today);
   const { comebackDays, comebackMax } = RULES.push;
   if (s.comebacksSinceLastWorkout >= comebackMax) return null;

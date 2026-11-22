@@ -58,6 +58,9 @@ test('comeback and workout reminder on the same day: one message', () => {
   const p = prefs({ comeback: true });
   const m = decide(at('2026-11-23', '17:05'), p, state({ lastCompletedDate: '2026-11-16', completedDates: ['2026-11-16'] }));
   assert.equal(m?.kind, 'comeback');
+  // The reminder already went out today (say the time was changed after it): no second message.
+  const later = decide(at('2026-11-23', '17:05'), p, state({ lastCompletedDate: '2026-11-16', completedDates: ['2026-11-16'], sentReminderToday: true }));
+  assert.equal(later, null);
 });
 
 test('rest alerts: never early, never stale', () => {
