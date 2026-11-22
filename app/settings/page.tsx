@@ -155,7 +155,7 @@ export default function SettingsPage() {
       </section>
 
       <section className={card}>
-        <h2 className="mb-1 text-lg font-bold">Effort</h2>
+        <h2 className="mb-1 text-lg font-bold">Effort check-ins</h2>
         <p className="mb-3 text-sm text-fl-tx2">Optional ways to note how hard training felt. You can always skip them.</p>
         {([
           ['ask', askEffort, 'Ask how hard it felt', 'One tap after your first and last exercise: Easy, Manageable, Very hard or Not sure.', () => saveEffort({ ask_effort: !askEffort })],
