@@ -78,7 +78,9 @@ const minutesOf = (ex: TemplateEx[]) => estimateMinutes(ex.map(e => ({ sets: e[1
  * exercises (the main lifts come first). Then sets are added or removed until the estimate, warm-up
  * included, lands in the range the person picked.
  */
-export function tailorTemplate(tpl: PlanTemplate, goal: Goal, minutes: Minutes): PlanTemplate {
+export type FitOpts = { newer?: boolean };
+
+export function tailorTemplate(tpl: PlanTemplate, goal: Goal, minutes: Minutes, opts: FitOpts = {}): PlanTemplate {
   const [lo, hi] = RULES.sessionTargets[minutes] ?? [45, 60];
   return {
     ...tpl,
@@ -91,15 +93,24 @@ export function tailorTemplate(tpl: PlanTemplate, goal: Goal, minutes: Minutes):
       if (goal === 'fitness') ex = ex.map(e => (isTimed(e) ? e : [e[0], e[1], Math.max(8, e[2]), Math.max(15, Math.max(8, e[2]) + 4)] as TemplateEx));
       if (minutes === 25) ex = ex.slice(0, 3);
       if (minutes === 40 || minutes === 45) ex = ex.slice(0, 4);
-      ex = fitDay(ex, lo, hi);
+      ex = fitDay(ex, lo, hi, undefined, opts);
       return { ...d, exercises: ex };
     }),
   };
 }
 
 /** Add or remove sets until the day's estimate lands in [lo, hi]. `keep` exercises (focus areas) lose sets last. */
-function fitDay(input: TemplateEx[], lo: number, hi: number, keep: (name: string) => boolean = () => false): TemplateEx[] {
+function fitDay(input: TemplateEx[], lo: number, hi: number, keep: (name: string) => boolean = () => false, opts: FitOpts = {}): TemplateEx[] {
   let ex = input.map(e => [...e] as TemplateEx);
+  const maxEach = opts.newer ? RULES.newer.maxSetsPerExercise : RULES.maxSetsPerExercise;
+  const maxTotal = opts.newer ? RULES.newer.maxSessionSets : Infinity;
+  const total = () => ex.reduce((n, e) => n + e[1], 0);
+  // Newer lifters: trim back to the caps first (later exercises lose sets first, never below 2).
+  for (let guard = 0; guard < 60; guard++) {
+    const i = ex.map((e, k) => k).reverse().find(k => ex[k][1] > maxEach || (total() > maxTotal && ex[k][1] > 2 && ex[k][1] === Math.max(...ex.map(e => e[1]))));
+    if (i === undefined) break;
+    ex[i] = [ex[i][0], ex[i][1] - 1, ex[i][2], ex[i][3]];
+  }
   // Too long: take a set off the exercise with the most sets (later ones first, focus last; never below 2), then drop the last exercise (keep 3).
   for (let guard = 0; guard < 40 && minutesOf(ex) > hi; guard++) {
     const order = ex.map((e, i) => i).filter(i => ex[i][1] > 2).sort((a, b) => Number(keep(ex[a][0])) - Number(keep(ex[b][0])) || ex[b][1] - ex[a][1] || b - a);
@@ -109,17 +120,18 @@ function fitDay(input: TemplateEx[], lo: number, hi: number, keep: (name: string
   }
   // Too short: add a set to the main lifts first, one pass at a time.
   for (let guard = 0; guard < 40 && minutesOf(ex) < lo; guard++) {
-    const open = ex.filter(e => !isTimed(e) && e[1] < RULES.maxSetsPerExercise);
+    if (total() >= maxTotal) break;
+    const open = ex.filter(e => !isTimed(e) && e[1] < maxEach);
     if (!open.length) break;
     const fewest = Math.min(...open.map(e => e[1]));
-    const i = ex.findIndex(e => !isTimed(e) && e[1] === fewest && e[1] < RULES.maxSetsPerExercise);
+    const i = ex.findIndex(e => !isTimed(e) && e[1] === fewest && e[1] < maxEach);
     ex[i] = [ex[i][0], ex[i][1] + 1, ex[i][2], ex[i][3]];
   }
   return ex;
 }
 
 /** Final pass after swaps and focus: every workout lands in the picked time. Focus exercises keep their extra sets if possible. */
-export function fitToTime(tpl: PlanTemplate, minutes: Minutes, keep?: (name: string) => boolean): PlanTemplate {
+export function fitToTime(tpl: PlanTemplate, minutes: Minutes, keep?: (name: string) => boolean, opts: FitOpts = {}): PlanTemplate {
   const [lo, hi] = RULES.sessionTargets[minutes] ?? [45, 60];
-  return { ...tpl, days: tpl.days.map(d => ({ ...d, exercises: fitDay(d.exercises, lo, hi, keep) })) };
+  return { ...tpl, days: tpl.days.map(d => ({ ...d, exercises: fitDay(d.exercises, lo, hi, keep, opts) })) };
 }

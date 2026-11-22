@@ -25,6 +25,12 @@ export const RULES = {
   sessionTargets: { 25: [20, 30], 40: [30, 45], 55: [45, 60], 75: [60, 80], 45: [35, 45], 60: [50, 65], 90: [70, 95] } as Record<number, readonly [number, number]>,
   /** Most working sets per exercise when filling a longer session. */
   maxSetsPerExercise: 5,
+  /**
+   * Newer lifters: at most 4 sets per exercise and 20 working sets per session, even when they pick
+   * a long session. Early progress comes from practice, and recovery is the limit; 20 sets is the top
+   * of the usual beginner range. The extra time becomes longer rests, not more sets.
+   */
+  newer: { maxSetsPerExercise: 4, maxSessionSets: 20 },
 } as const;
 
 export const SWAP_REASONS = [

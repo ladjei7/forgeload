@@ -159,11 +159,12 @@ function StartFlow({ change }: { change: boolean }) {
   const adapted = base && comfort ? applyComfort(base, comfort) : null;
   // Order: experience, comfort (which version of each lift), goal and time (what fits), then areas to
   // go easy on (so the note only talks about exercises that are really in the plan), then focus.
-  const tailored = adapted && goal && mins ? tailorTemplate(adapted.tpl, goal, mins) : null;
+  const newer = exp === 'new' || exp === 'brand_new';
+  const tailored = adapted && goal && mins ? tailorTemplate(adapted.tpl, goal, mins, { newer }) : null;
   const gentle = tailored ? applyAreas(tailored, areas) : null;
   const focused = gentle ? applyFocus(gentle.tpl, focus) : null;
   // Swaps and focus sets change the length a little: one last pass keeps every workout in the picked time.
-  const tpl = focused && mins ? fitToTime(focused.tpl, mins as Minutes, n => inFocus(n, focus)) : null;
+  const tpl = focused && mins ? fitToTime(focused.tpl, mins as Minutes, n => inFocus(n, focus), { newer }) : null;
   const insteadOf = (name: string) => gentle?.swapped?.[name] ?? adapted?.swapped[name];
 
   function answer(setter: () => void) { setter(); setPicked(''); setTimeout(() => setStep(s => s + 1), 180); }
@@ -258,7 +259,7 @@ function StartFlow({ change }: { change: boolean }) {
           <div className="mb-4 space-y-2 rounded-2xl bg-fl-s1 border border-fl-line p-4 text-sm leading-relaxed text-fl-tx2">
             <p><span className="font-semibold text-fl-tx">Why this split. </span>{rec.why}</p>
             <p><span className="font-semibold text-fl-tx">Your goal. </span>{GOAL_NOTE[goal as Goal]}</p>
-            <p><span className="font-semibold text-fl-tx">Your time. </span>{TIME_NOTE[mins as Minutes]}</p>
+            <p><span className="font-semibold text-fl-tx">Your time. </span>{newer && mins === 75 ? 'Every exercise, about an hour with warm-up. While you\'re new we cap it at about 20 sets a workout: recovery matters more than extra sets, so use the spare time for longer rests.' : TIME_NOTE[mins as Minutes]}</p>
             {adapted && adapted.notes.length > 0 && <p><span className="font-semibold text-fl-tx">Your comfort. </span>{adapted.notes.join(' ')}</p>}
             {focused && focused.notes.length > 0 && <p><span className="font-semibold text-fl-tx">Your focus. </span>{focused.notes.join(' ')}</p>}
             {gentle && gentle.notes.length > 0 && <p><span className="font-semibold text-fl-tx">Going easy. </span>{gentle.notes.join(' ')}</p>}

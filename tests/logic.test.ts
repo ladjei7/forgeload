@@ -217,3 +217,15 @@ test('persona test: lettered workouts differ; beginners keep the main lifts of w
     }
   }
 });
+
+test('newer lifters: at most 4 sets per exercise and 20 per workout, even for 60+ minutes', async () => {
+  const { forExperience } = await import('../app/lib/templates.ts');
+  const { fitToTime } = await import('../app/lib/recommend.ts');
+  for (const tpl of TEMPLATES) for (const goal of ['muscle', 'strength', 'fat_loss'] as const) {
+    const t = fitToTime(tailorTemplate(forExperience(tpl, 'new'), goal, 75, { newer: true }), 75, undefined, { newer: true });
+    for (const d of t.days) {
+      assert.ok(d.exercises.every(e => e[1] <= 4), `${tpl.id} ${d.name}: a set count above 4`);
+      assert.ok(d.exercises.reduce((n, e) => n + e[1], 0) <= 20, `${tpl.id} ${d.name}: more than 20 sets`);
+    }
+  }
+});

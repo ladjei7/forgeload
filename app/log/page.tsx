@@ -80,6 +80,8 @@ export default function LogPage() {
   const [rows, setRows] = useState<Record<string, SetRow[]>>({});
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  // A problem with one set is shown under that set, where the person is looking.
+  const [rowError, setRowError] = useState<{ key: string; text: string } | null>(null);
   // Effort: plain-language question (on by default) and optional reps in reserve (off by default).
   // Weights are stored in pounds; everything on this screen is in the person's unit.
   const [unit] = useState<Unit>(() => getUnit());
@@ -440,7 +442,7 @@ export default function LogPage() {
     const t0 = clockNow();
     if (t0 - (lastTap.current[key] ?? 0) < 600) return; // a fast double tap must not log and then undo
     lastTap.current[key] = t0;
-    setError('');
+    setError(''); setRowError(null);
     const row = rowsRef.current[ex.id][i];
     if (row.state === 'failed') { void syncNow(true); return; } // ↻ means retry, never undo
     if (row.done) {
@@ -457,7 +459,7 @@ export default function LogPage() {
     const isBw = meta[ex.exercise_id ?? '']?.tracking === 'bodyweight_reps';
     const weight = isBw && weightStr === '' ? 0 : parseFloat(weightStr), reps = parseInt(repsStr, 10);
     if (!Number.isFinite(weight) || !Number.isFinite(reps) || reps <= 0) {
-      setError(`Enter weight and reps for ${ex.exercise_name} set ${i + 1}.`);
+      setRowError({ key, text: `Enter the weight${repsStr === '' ? ' and reps' : ''} for set ${i + 1} first.` });
       return;
     }
     // Stored on the device first (survives refresh and app close), then synced. Shown as saved to
@@ -838,6 +840,7 @@ export default function LogPage() {
                         className="mt-3 h-16 w-full rounded-2xl bg-fl-acc text-xl font-bold text-fl-on-acc">
                         Complete set {ai + 1}
                       </button>
+                      {rowError?.key === `${ex.id}:${ai}` && <p className="mt-2 text-center text-sm font-semibold text-fl-bad" role="alert">⚠ {rowError.text}</p>}
                       <p className="mt-2 text-center text-xs text-fl-tx2">Empty boxes use the target.</p>
                     </div>
                   ) : <p className="font-semibold text-fl-ok">✓ All sets saved for this exercise.</p>}
@@ -895,6 +898,7 @@ export default function LogPage() {
                   ))}
                 {r.state === 'local' && !ob.online && <p className="mt-1 text-right text-xs text-fl-tx2" role="status">On this device. Syncs when you reconnect.</p>}
                 {r.state === 'failed' && <p className="mt-1 text-right text-xs text-fl-bad" role="alert">Not saved to your account. Tap ↻ to retry.</p>}
+                {rowError?.key === `${ex.id}:${i}` && <p className="mt-1 text-right text-sm font-semibold text-fl-bad" role="alert">⚠ {rowError.text}</p>}
                 {i === 0 && calibBlock(ex, rs, bw)}
                 </div>
               );
