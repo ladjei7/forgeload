@@ -6,6 +6,8 @@
 //  - Replacements stay inside the user's comfort level and avoid list. The one exception is something the user chose themselves (rule 1).
 import { estMinutes, levelOf, comfortLevel, PATTERN, type Comfort, type Day, type Hist, type LibEx } from './data.ts';
 import { candidates, MAJOR } from './generate.ts';
+import { isStalled } from '../lib/stall.ts';
+import { RULES } from '../lib/rules.ts';
 
 /** Things the user did or said. d = days ago. Kept as an append-only log; plans and history are never rewritten from it. */
 export type Ev =
@@ -34,7 +36,7 @@ export function alternative(exId: string, level: 1 | 2 | 3, avoid: string[], tak
 }
 
 /** Every rule threshold in one place. Starting hypotheses, to be tuned with beta data. */
-export const TH = { repeatSwap: 3, steadySessions: 3, comfortUpGood: 3 } as const;
+export const TH = { repeatSwap: 3, steadySessions: RULES.stall.sessions, comfortUpGood: 3 } as const;
 
 export function suggest(i: AdaptIn): Suggestion[] {
   const out: Omit<Suggestion, 'tier'>[] = []; const level = comfortLevel(i.comfort);
@@ -64,16 +66,17 @@ export function suggest(i: AdaptIn): Suggestion[] {
       accept: `Swap to ${nm(i.lib, alt)}`, change: { t: 'replace', from: ex, to: alt } });
   }
 
-  // 3. Stalled: three sessions in a row with no better top set. Suggest a variation only. Never changes weight or comfort.
+  // 3. Stalled: the last sessions show no progress from one to the next (shared logic in lib/stall.ts:
+  // a heavier working weight, or more reps at the same weight, both count). Suggest a variation only.
+  // Never changes weight or comfort.
   for (const d of i.plan) for (const pe of d.ex) {
-    const h = i.hist[pe.exId]; if (!h || h.length < TH.steadySessions) continue;
-    const best = (s: (typeof h)[number]) => s.sets.reduce((a, x) => (x.w > a.w || (x.w === a.w && x.r > a.r) ? x : a), { w: 0, r: 0 });
-    const [a, b, c] = [best(h[0]), best(h[1]), best(h[2])]; const better = (x: typeof a, y: typeof a) => x.w > y.w || (x.w === y.w && x.r > y.r);
-    if (better(a, b) || better(b, c) || better(a, c)) continue;
+    const h = i.hist[pe.exId]; if (!h) continue;
+    const oldestFirst = [...h].reverse().map((s) => ({ sets: s.sets.map((x) => ({ weight: x.w, reps: x.r })) }));
+    if (!isStalled(oldestFirst, TH.steadySessions)) continue;
     const alt = alternative(pe.exId, level, i.avoid, d.ex.map((e) => e.exId)); if (!alt) continue;
     if (out.some((s) => s.kind === 'stalled' && s.change.t === 'replace' && s.change.from === pe.exId)) continue;
     out.push({ id: `stall:${pe.exId}`, kind: 'stalled', title: `${nm(i.lib, pe.exId)} has been steady lately`,
-      why: `Your best set has been about the same for your last ${TH.steadySessions} sessions. That can be normal (sleep, stress, a light week), so this is not a verdict. If you'd like to review it, one option is a different variation, ${nm(i.lib, alt)}. Keeping this exercise is also a fine choice.`,
+      why: `Your working sets have been about the same for your last ${TH.steadySessions} sessions. That can be normal (sleep, stress, a light week), so this is not a verdict. If you'd like to review it, one option is a different variation, ${nm(i.lib, alt)}. Keeping this exercise is also a fine choice.`,
       accept: `Try ${nm(i.lib, alt)}`, change: { t: 'replace', from: pe.exId, to: alt, dayIds: [d.id] } });
   }
 

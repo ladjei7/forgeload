@@ -26,6 +26,12 @@ export const RULES = {
   /** Most working sets per exercise when filling a longer session. */
   maxSetsPerExercise: 5,
   /**
+   * "Steady lately" (Pro, planned): stalled only when the last 3 eligible sessions of an exercise
+   * show no progress from each one to the next. 3 is the smallest window that isn't a single off
+   * day; with double progression a lifter normally gains a rep somewhere within two sessions.
+   */
+  stall: { sessions: 3 },
+  /**
    * Newer lifters: at most 4 sets per exercise and 20 working sets per session, even when they pick
    * a long session. Early progress comes from practice, and recovery is the limit; 20 sets is the top
    * of the usual beginner range. The extra time becomes longer rests, not more sets.
