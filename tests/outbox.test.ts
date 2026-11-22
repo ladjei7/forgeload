@@ -81,3 +81,19 @@ test('overlay restores pending effort answers after a refresh', () => {
   const o = overlay([log('L1'), eff('L1', 'manageable'), eff('L2', 'easy', 'other')], 's1');
   assert.deepEqual(o.efforts, { L1: 'manageable' });
 });
+
+test('deload flag: goes through the outbox, latest choice wins, and the overlay reports it', async () => {
+  const { enqueue: enq, overlay: ov, flush: fl } = await import('../app/lib/outbox.ts');
+  let ops = enq([], { opId: 'a', kind: 'deload', sessionId: 's1', at: 1, isDeload: true });
+  ops = enq(ops, { opId: 'b', kind: 'deload', sessionId: 's1', at: 2, isDeload: false });
+  ops = enq(ops, { opId: 'c', kind: 'deload', sessionId: 's2', at: 3, isDeload: true });
+  assert.deepEqual(ops.map(o => o.opId), ['b', 'c']);
+  assert.equal(ov(ops, 's1').deload, false);
+  assert.equal(ov(ops, 's2').deload, true);
+  assert.equal(ov([], 's1').deload, undefined); // nothing pending: use the server's value
+  // offline: kept for later; online: sent and confirmed
+  const off = await fl(ops, async () => 'transient');
+  assert.equal(off.remaining.length, 2);
+  const on = await fl(ops, async () => 'ok');
+  assert.deepEqual([on.remaining.length, on.confirmed.length], [0, 2]);
+});

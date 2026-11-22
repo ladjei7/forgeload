@@ -22,7 +22,7 @@ export default function ProgressPage() {
     (async () => {
       const { data, error } = await supabase
         .from('workout_sessions')
-        .select('id, completed_at, exercise_logs ( exercise_name, exercise_id, exercise_sets ( reps, weight, set_type, skipped ) )')
+        .select('id, completed_at, is_deload, exercise_logs ( exercise_name, exercise_id, exercise_sets ( reps, weight, set_type, skipped ) )')
         .not('completed_at', 'is', null)
         .order('completed_at', { ascending: true })
         .limit(500);

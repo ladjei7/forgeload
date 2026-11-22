@@ -48,6 +48,10 @@ async function send(op: Op): Promise<Outcome> {
     const { error, status } = await supabase.from('exercise_sets').upsert(op.payload, { onConflict: 'id' });
     return classify(error, status);
   }
+  if (op.kind === 'deload') {
+    const { error, status } = await supabase.from('workout_sessions').update({ is_deload: op.isDeload }).eq('id', op.sessionId);
+    return classify(error, status);
+  }
   if (op.kind === 'effort') {
     const { error, status } = await supabase.from('exercise_logs').update({ effort: op.effort }).eq('id', op.logId);
     return classify(error, status);

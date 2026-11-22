@@ -1,20 +1,19 @@
 // Pure helpers for the Home screen. No UI, no database. Nothing here invents data:
 // with no history, last performance is null and the week is empty.
-import { suggestTarget, defaultRestSeconds, workingWeight, workingSet, type PrevSet, type Target } from './progression.ts';
+import { suggestTarget, defaultRestSeconds, workingWeight, workingSet, latestForTarget, type PrevSet, type Target } from './progression.ts';
 import { RULES } from './rules.ts';
 
-export type HistEntry = { name: string; exerciseId: string | null; at: string; sets: { set_number: number; reps: number; weight: number }[] };
+export type HistEntry = { name: string; exerciseId: string | null; at: string; is_deload?: boolean | null; sets: { set_number: number; reps: number; weight: number }[] };
 export type PlanExLite = { name: string; exerciseId: string | null; sets: number; repMin: number; repMax: number };
 export type ExSummary = { name: string; sets: number; repMin: number; repMax: number; last: PrevSet[] | null; lastShown: PrevSet | null; target: Target };
 
-/** Most recent completed session's sets for an exercise. Matches by exercise id first, then by name. */
+/** Sets of the session next time builds on (most recent non-deload). Matches by exercise id first, then by name. */
 export function lastSets(hist: HistEntry[], ex: { name: string; exerciseId: string | null }): PrevSet[] | null {
   const nm = ex.name.trim().toLowerCase();
   const mine = hist
     .filter(h => (ex.exerciseId && h.exerciseId === ex.exerciseId) || (!h.exerciseId && h.name.trim().toLowerCase() === nm) || (!ex.exerciseId && h.name.trim().toLowerCase() === nm))
-    .filter(h => h.sets.some(s => s.reps > 0))
-    .sort((a, b) => b.at.localeCompare(a.at));
-  const latest = mine[0];
+    ;
+  const latest = latestForTarget(mine);
   if (!latest) return null;
   return [...latest.sets].sort((a, b) => a.set_number - b.set_number).map(s => ({ reps: s.reps, weight: s.weight }));
 }

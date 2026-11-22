@@ -8,9 +8,10 @@ import { show, label, type Unit } from './units.ts';
 
 export type PSet = { reps: number | null; weight: number | null; set_type?: string | null; skipped?: boolean | null };
 export type PLog = { exercise_name: string; exercise_id?: string | null; exercise_sets: PSet[] | null };
-export type PSession = { id: string; completed_at: string; exercise_logs: PLog[] | null };
+/** is_deload: a planned light session. Shown on the chart, never a record, never sets the best or the starting point. */
+export type PSession = { id: string; completed_at: string; is_deload?: boolean | null; exercise_logs: PLog[] | null };
 
-export type Point = { sessionId: string; date: Date; weight: number; reps: number; value: number; record: boolean };
+export type Point = { sessionId: string; date: Date; weight: number; reps: number; value: number; record: boolean; deload: boolean };
 export type LiftProgress = {
   key: string; name: string; kind: 'weight' | 'reps';
   points: Point[];            // oldest first, one per workout
@@ -55,7 +56,7 @@ export function liftProgress(sessions: PSession[]): LiftProgress[] {
         if (v > bv || (v === bv && (x.weight ?? 0) > (best.weight ?? 0))) best = x;
       }
       const prevSame = entry.pts.find(p => p.sessionId === s.id);
-      const pt = { sessionId: s.id, date, weight: best.weight ?? 0, reps: best.reps ?? 0, value: 0 };
+      const pt = { sessionId: s.id, date, weight: best.weight ?? 0, reps: best.reps ?? 0, value: 0, deload: !!s.is_deload };
       if (prevSame) { // same exercise twice in one workout: keep the better one
         if (strength(pt.weight, pt.reps) > strength(prevSame.weight, prevSame.reps)) Object.assign(prevSame, pt);
       } else entry.pts.push(pt);
@@ -65,15 +66,18 @@ export function liftProgress(sessions: PSession[]): LiftProgress[] {
   const out: LiftProgress[] = [];
   for (const [key, e] of lifts) {
     const kind: 'weight' | 'reps' = e.bodyweight ? 'reps' : 'weight';
-    let top = -1;
-    const points: Point[] = e.pts.map((p, i) => {
+    let top = -1; let seen = 0;
+    const points: Point[] = e.pts.map(p => {
       const value = kind === 'weight' ? strength(p.weight, p.reps) : p.reps;
-      const record = i > 0 && value > top; // the first time is a starting point, not a record
-      top = Math.max(top, value);
+      if (p.deload) return { ...p, value, record: false }; // a deload is never a record and never moves the bar
+      const record = seen > 0 && value > top; // the first time is a starting point, not a record
+      top = Math.max(top, value); seen++;
       return { ...p, value, record };
     });
-    const best = points.reduce((a, b) => (b.value > a.value ? b : a), points[0]);
-    out.push({ key, name: e.name, kind, points, best, first: points[0] });
+    const real = points.filter(p => !p.deload);
+    const pool = real.length ? real : points;
+    const best = pool.reduce((a, b) => (b.value > a.value ? b : a), pool[0]);
+    out.push({ key, name: e.name, kind, points, best, first: pool[0] });
   }
   // Most recently trained first.
   return out.sort((a, b) => +b.points[b.points.length - 1].date - +a.points[a.points.length - 1].date);
@@ -101,7 +105,7 @@ export function recentRecords(lifts: LiftProgress[], now = new Date(), days = 30
   for (const l of lifts) {
     l.points.forEach((p, i) => {
       if (!p.record || +p.date < since) return;
-      const previous = l.points.slice(0, i).reduce((a, b) => (b.value > a.value ? b : a));
+      const previous = l.points.slice(0, i).filter(q => !q.deload).reduce((a, b) => (b.value > a.value ? b : a));
       out.push({ lift: l, point: p, previous });
     });
   }
@@ -119,7 +123,7 @@ export function setLabel(p: { weight: number; reps: number }, unit: Unit = 'lb')
  * is lighter but clearly stronger overall. Null when there's nothing to celebrate yet.
  */
 export function improvement(l: LiftProgress, unit: Unit = 'lb'): string | null {
-  if (l.points.length < 2 || l.best.value <= l.first.value) return null;
+  if (l.points.filter(p => !p.deload).length < 2 || l.best.value <= l.first.value) return null;
   if (l.kind === 'reps') return `+${l.best.reps - l.first.reps} reps`;
   const dw = Math.round((show(l.best.weight, unit) - show(l.first.weight, unit)) * 10) / 10;
   if (dw > 0) return `+${dw} ${label(unit)}`;
@@ -131,7 +135,7 @@ export function improvement(l: LiftProgress, unit: Unit = 'lb'): string | null {
 export function headline(lifts: LiftProgress[], s: Summary): string {
   if (s.workouts === 0) return '';
   if (s.workouts === 1) return 'Your first workout is in. These are your starting numbers: beat any of them next time and it counts as a record.';
-  const tracked = lifts.filter(l => l.points.length > 1);
+  const tracked = lifts.filter(l => l.points.filter(p => !p.deload).length > 1);
   const up = tracked.filter(l => l.best.value > l.first.value).length;
   if (!tracked.length) return `${s.workouts} workouts done. Repeat an exercise and you'll see it improve here.`;
   if (!up) return `${s.workouts} workouts done. Records come from beating your best set, one rep or one small jump at a time.`;

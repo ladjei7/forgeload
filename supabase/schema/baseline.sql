@@ -1,6 +1,9 @@
 -- baseline.sql: the public schema of production (ltvhszozgzgymsbexgps) as of 2026-11-04, after migrations 001-010.
 -- Generated from read-only catalog queries. Schema only: no user data, no exercise catalog rows.
 -- Used to create the development project (forgeload-dev). Safe to run on an EMPTY project only.
+-- To match production today, apply supabase/migrations/011 onward in order after this file
+-- (011 schedule and effort, 012 session day name, 013 session ownership, 014 training prefs,
+-- 015 search ranking, 016 workout_sessions.is_deload, 017 cardio tags).
 
 create extension if not exists pg_trgm with schema extensions;
 

@@ -62,3 +62,13 @@ test('a session that improves resets the count; a drop in weight is not progress
   assert.equal(isStalled([S([100, 8]), S([100, 9]), S([100, 9]), S([100, 9])]), true);  // gain, then 3 flat sessions
   assert.equal(isStalled([S([100, 10]), S([95, 10]), S([95, 10])]), true);
 });
+
+test('deload: normal, normal, deload, normal with real progress is not stalled; the deload is skipped', () => {
+  const d: StallSession = { sets: [{ weight: 100, reps: 7 }, { weight: 100, reps: 7 }], is_deload: true };
+  assert.equal(isStalled([S([100, 10], [100, 9]), S([100, 10], [100, 9]), d, S([100, 10], [100, 10])]), false);
+  // the deload neither breaks a stall nor counts as one
+  assert.equal(isStalled([S([100, 10], [100, 9]), S([100, 10], [100, 9]), d, S([100, 10], [100, 9])]), true);
+  assert.equal(isStalled([S([100, 10]), d, d, S([100, 10])]), false); // only 2 eligible sessions
+  // older rows: missing or null flag is a normal session
+  assert.equal(isStalled([{ sets: [{ weight: 100, reps: 8 }], is_deload: null }, S([100, 8]), { sets: [{ weight: 100, reps: 8 }] }]), true);
+});

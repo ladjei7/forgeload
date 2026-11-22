@@ -26,6 +26,7 @@ type Session = {
   id: string;
   session_date: string;
   day_name: string | null;
+  is_deload?: boolean | null;
   workout_days: { day_name: string } | null;
   exercise_logs: ExerciseLog[];
 };
@@ -44,6 +45,7 @@ export default function HistoryPage() {
           id,
           session_date,
           day_name,
+          is_deload,
           workout_days ( day_name ),
           exercise_logs (
             id,
@@ -83,6 +85,7 @@ export default function HistoryPage() {
   // Compare with the most recent earlier session that included the same exercise (not just the session before).
   function previousVolume(sessionIndex: number, name: string) {
     for (const older of sessions.slice(sessionIndex + 1)) {
+      if (older.is_deload) continue; // compare with real training, not a planned light week
       const l = older.exercise_logs.find(x => x.exercise_name === name);
       if (l && l.exercise_sets.length) return totalVolume(l.exercise_sets);
     }
@@ -113,7 +116,8 @@ export default function HistoryPage() {
           const setCount = session.exercise_logs.reduce((n, l) => n + l.exercise_sets.length, 0);
           return (
             <section key={session.id} className={ui.card}>
-              <h2 className="text-xl font-bold">{session.day_name ?? session.workout_days?.day_name ?? 'Workout'}</h2>
+              <h2 className="flex items-center gap-2 text-xl font-bold">{session.day_name ?? session.workout_days?.day_name ?? 'Workout'}
+                {session.is_deload && <span className="rounded-full border border-fl-field px-2 py-0.5 text-xs font-semibold text-fl-tx2">Deload</span>}</h2>
               <p className="text-sm text-fl-tx2">
                 {parseLocalDate(session.session_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                 {setCount > 0 && ` · ${setCount} ${setCount === 1 ? 'set' : 'sets'}`}
@@ -122,7 +126,7 @@ export default function HistoryPage() {
               <ul className="mt-3 divide-y divide-fl-line border-t border-fl-line">
                 {session.exercise_logs.map(log => {
                   const volume = totalVolume(log.exercise_sets);
-                  const trend = getTrend(volume, previousVolume(sessionIndex, log.exercise_name));
+                  const trend = session.is_deload ? null : getTrend(volume, previousVolume(sessionIndex, log.exercise_name));
                   const sorted = [...log.exercise_sets].sort((a, b) => a.set_number - b.set_number);
                   return (
                     <li key={log.id} className="py-3">

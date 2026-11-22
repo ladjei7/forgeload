@@ -90,11 +90,11 @@ export default function HomePage() {
               const quoted = planEx.map(e => `"${e.name.replace(/"/g, '\\"')}"`).join(',');
               const exIds = planEx.map(e => e.exerciseId).filter(Boolean).join(',');
               const { data: hist } = await supabase.from('exercise_logs')
-                .select('exercise_name, exercise_id, workout_sessions!inner(completed_at), exercise_sets(set_number, reps, weight)')
+                .select('exercise_name, exercise_id, workout_sessions!inner(completed_at, is_deload), exercise_sets(set_number, reps, weight)')
                 .or(exIds ? `exercise_name.in.(${quoted}),exercise_id.in.(${exIds})` : `exercise_name.in.(${quoted})`)
                 .not('workout_sessions.completed_at', 'is', null).limit(500);
-              const entries: HistEntry[] = ((hist ?? []) as unknown as { exercise_name: string; exercise_id: string | null; workout_sessions: { completed_at: string } | { completed_at: string }[] | null; exercise_sets: HistEntry['sets'] | null }[])
-                .map(r => ({ name: r.exercise_name, exerciseId: r.exercise_id, at: one(r.workout_sessions)?.completed_at ?? '', sets: r.exercise_sets ?? [] }));
+              const entries: HistEntry[] = ((hist ?? []) as unknown as { exercise_name: string; exercise_id: string | null; workout_sessions: { completed_at: string; is_deload?: boolean | null } | { completed_at: string; is_deload?: boolean | null }[] | null; exercise_sets: HistEntry['sets'] | null }[])
+                .map(r => ({ name: r.exercise_name, exerciseId: r.exercise_id, at: one(r.workout_sessions)?.completed_at ?? '', is_deload: one(r.workout_sessions)?.is_deload ?? false, sets: r.exercise_sets ?? [] }));
               h.next = { dayName: next.day_name, exercises: summarize(planEx, entries, lb => show(lb, getUnit()), stepFor(getUnit()), (w, above) => loadable(w, getUnit(), above)), pos: rotationPosition(dayList.map(d => d.id), next.id), minutes: estimateMinutes(planEx) };
             }
             else h.emptyPlan = true;

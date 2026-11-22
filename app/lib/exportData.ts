@@ -50,12 +50,12 @@ export async function buildExport(): Promise<Export> {
 const q = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 
 export function setsCsv(x: Export): string {
-  const lines = ['date,time,workout,exercise,set,weight_lb,reps,rir,effort'];
+  const lines = ['date,time,workout,deload,exercise,set,weight_lb,reps,rir,effort'];
   for (const s of x.sessions) {
     const logs = (s.exercise_logs as Row[] | null) ?? [];
     const day = (s.day_name as string | null) ?? ((s.workout_days as Row | Row[] | null) && (Array.isArray(s.workout_days) ? (s.workout_days as Row[])[0] : s.workout_days as Row))?.day_name;
     for (const l of logs) for (const st of ((l.exercise_sets as Row[] | null) ?? []))
-      lines.push([...localParts(s.completed_at as string | null, s.session_date as string | null), day, l.exercise_name, st.set_number, st.weight, st.reps, st.rir, l.effort].map(q).join(','));
+      lines.push([...localParts(s.completed_at as string | null, s.session_date as string | null), day, s.is_deload ? 'yes' : 'no', l.exercise_name, st.set_number, st.weight, st.reps, st.rir, l.effort].map(q).join(','));
   }
   return lines.join('\n') + '\n';
 }

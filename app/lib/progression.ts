@@ -103,6 +103,15 @@ export function workingSet(sets: PrevSet[]): PrevSet | null {
   return at.length ? at.reduce((a, b) => (b.reps > a.reps ? b : a)) : null;
 }
 
+/**
+ * The past session next time's target builds on: the most recent one with at least one real set that
+ * is NOT a deload. After a deload week, targets pick up from where the person was before it, not from
+ * the lighter deload numbers. Older rows without the flag (null or missing) are normal sessions.
+ */
+export function latestForTarget<T extends { at: string; is_deload?: boolean | null; sets: { reps: number }[] | null }>(entries: T[]): T | undefined {
+  return [...entries].sort((a, b) => b.at.localeCompare(a.at)).find(e => !e.is_deload && (e.sets ?? []).some(s => s.reps > 0));
+}
+
 // Simple rest default by rep range. Heavier, lower-rep work gets longer rest.
 export function defaultRestSeconds(repMax: number): number {
   const r = RULES.restSeconds;

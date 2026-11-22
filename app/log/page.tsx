@@ -7,7 +7,8 @@ import { Icon } from '../components/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
-import { suggestTarget, defaultRestSeconds, workingWeight, type PrevSet } from '../lib/progression';
+import { suggestTarget, defaultRestSeconds, workingWeight, latestForTarget, type PrevSet } from '../lib/progression';
+import { DELOAD_UNTIL_KEY, DELOAD_HINT, deloadByDefault, weekEnd } from '../lib/deload';
 import { strength } from '../lib/progressStats';
 import { nextDayId } from '../lib/rotation';
 import { chooseNext, localDate } from '../lib/schedule';
@@ -32,7 +33,7 @@ const EFFORTS: { id: Effort; title: string; sub: string }[] = [
   { id: 'unsure', title: 'Not sure', sub: '' },
 ];
 type Rest = { end: number; total: number; paused?: number };
-type Session = { id: string; workout_day_id: string; started_at: string };
+type Session = { id: string; workout_day_id: string; started_at: string; is_deload?: boolean | null };
 type Prev = { sets: PrevSet[] };
 type Summary = {
   dayName: string; minutes: number; exercises: number; sets: number; volume: number;
@@ -43,7 +44,7 @@ type Summary = {
 type HistRow = {
   exercise_name: string;
   exercise_id: string | null;
-  workout_sessions: { completed_at: string } | { completed_at: string }[] | null;
+  workout_sessions: { completed_at: string; is_deload?: boolean | null } | { completed_at: string; is_deload?: boolean | null }[] | null;
   exercise_sets: { set_number: number; reps: number; weight: number }[] | null;
 };
 
@@ -79,6 +80,10 @@ export default function LogPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [rows, setRows] = useState<Record<string, SetRow[]>>({});
   const [starting, setStarting] = useState(false);
+  // Deload: off by default; on when a "rest of this week" choice on this device covers today.
+  // (Read once on the device; the block only renders after the workout loads, so server and client match.)
+  const [deloadWeek, setDeloadWeek] = useState(() => typeof window !== 'undefined' && deloadByDefault(lsGet(DELOAD_UNTIL_KEY), localDateString()));
+  const [deload, setDeload] = useState(deloadWeek);
   const [error, setError] = useState('');
   // A problem with one set is shown under that set, where the person is looking.
   const [rowError, setRowError] = useState<{ key: string; text: string } | null>(null);
@@ -156,18 +161,21 @@ export default function LogPage() {
       const ids = list.map(e => e.exercise_id).filter(Boolean).join(',');
       const { data: hist } = await supabase
         .from('exercise_logs')
-        .select('exercise_name, exercise_id, workout_sessions!inner(completed_at), exercise_sets(set_number, reps, weight)')
+        .select('exercise_name, exercise_id, workout_sessions!inner(completed_at, is_deload), exercise_sets(set_number, reps, weight)')
         .or(ids ? `exercise_name.in.(${quoted}),exercise_id.in.(${ids})` : `exercise_name.in.(${quoted})`)
         .not('workout_sessions.completed_at', 'is', null)
         .limit(1000);
       const planById = new Map(list.filter(e => e.exercise_id).map(e => [e.exercise_id as string, e.exercise_name]));
       const planByName = new Map(list.map(e => [e.exercise_name.trim().toLowerCase(), e.exercise_name]));
-      const byName: Record<string, { at: string; sets: HistRow['exercise_sets'] }[]> = {};
+      const byName: Record<string, { at: string; is_deload: boolean; sets: HistRow['exercise_sets'] }[]> = {};
       for (const r of (hist ?? []) as unknown as HistRow[]) {
         const key = (r.exercise_id && planById.get(r.exercise_id)) || planByName.get(r.exercise_name.trim().toLowerCase());
         if (!key) continue;
-        const at = one(r.workout_sessions)?.completed_at ?? '';
-        (byName[key] ??= []).push({ at, sets: r.exercise_sets });
+        const sess = one(r.workout_sessions);
+        const at = sess?.completed_at ?? '';
+        const isDeload = !!sess?.is_deload;
+        (byName[key] ??= []).push({ at, is_deload: isDeload, sets: r.exercise_sets });
+        if (isDeload) continue; // a deload never sets the best to beat
         for (const s of r.exercise_sets ?? []) if (s.reps > 0) {
           const w = show(s.weight, getUnit());
           const score = w > 0 ? strength(w, s.reps) : s.reps;
@@ -175,8 +183,8 @@ export default function LogPage() {
         }
       }
       for (const [name, entries] of Object.entries(byName)) {
-        entries.sort((a, b) => b.at.localeCompare(a.at));
-        const latest = entries.find(e => (e.sets ?? []).some(s => s.reps > 0));
+        // Targets and "previous" build on the last non-deload session, so a deload week never lowers them.
+        const latest = latestForTarget(entries);
         if (latest) prevMap[name] = { sets: [...(latest.sets ?? [])].sort((a, b) => a.set_number - b.set_number).map(s => ({ reps: s.reps, weight: show(s.weight, getUnit()) })) };
       }
     }
@@ -283,7 +291,7 @@ export default function LogPage() {
 
         // Resume an unfinished workout instead of creating a duplicate.
         const { data: active } = await supabase
-          .from('workout_sessions').select('id, workout_day_id, started_at, workout_days(plan_id)')
+          .from('workout_sessions').select('id, workout_day_id, started_at, is_deload, workout_days(plan_id)')
           .is('completed_at', null).order('started_at', { ascending: false }).limit(1);
         const a = active?.[0] as unknown as (Session & { workout_days: { plan_id: string } | { plan_id: string }[] | null }) | undefined;
         if (a) {
@@ -292,8 +300,9 @@ export default function LogPage() {
           const { data: dData } = await supabase
             .from('workout_days').select('id, day_name, sort_order').eq('plan_id', pid).order('sort_order');
           setDays((dData ?? []) as Day[]);
-          const s: Session = { id: a.id, workout_day_id: a.workout_day_id, started_at: a.started_at };
+          const s: Session = { id: a.id, workout_day_id: a.workout_day_id, started_at: a.started_at, is_deload: a.is_deload };
           setSession(s); setDayId(s.workout_day_id);
+          setDeload(overlay(getState().ops, s.id).deload ?? !!s.is_deload);
           await loadDayContext(s.workout_day_id, s);
           return;
         }
@@ -382,23 +391,36 @@ export default function LogPage() {
     try {
       // Re-check for an unfinished session (double-tap, second device) before creating another.
       const { data: existing } = await supabase
-        .from('workout_sessions').select('id, workout_day_id, started_at')
+        .from('workout_sessions').select('id, workout_day_id, started_at, is_deload')
         .is('completed_at', null).order('started_at', { ascending: false }).limit(1);
       let s = existing?.[0] as Session | undefined;
       if (!s) {
         const { data, error: err } = await supabase
-          .from('workout_sessions').insert([{ workout_day_id: dayId, session_date: localDateString() }])
-          .select('id, workout_day_id, started_at').single();
+          .from('workout_sessions').insert([{ workout_day_id: dayId, session_date: localDateString(), is_deload: deload }])
+          .select('id, workout_day_id, started_at, is_deload').single();
         if (err || !data) throw err ?? new Error('no session');
         s = data as Session;
       }
       setSession(s); setDayId(s.workout_day_id);
+      setDeload(overlay(getState().ops, s.id).deload ?? !!s.is_deload);
       await loadDayContext(s.workout_day_id, s);
     } catch {
       setError('Could not start the workout. Check your connection and try again.');
     } finally {
       setStarting(false);
     }
+  }
+
+  /** Mark this workout as a deload (or not). Saved through the outbox, so it works offline. Never blocks logging. */
+  function toggleDeload(on: boolean) {
+    setDeload(on);
+    if (!on && deloadWeek) { setDeloadWeek(false); lsSet(DELOAD_UNTIL_KEY, null); }
+    if (session) { addOp({ opId: newId(), kind: 'deload', sessionId: session.id, at: clockNow(), isDeload: on }); void syncNow(); }
+  }
+  function toggleDeloadWeek(on: boolean) {
+    setDeloadWeek(on);
+    lsSet(DELOAD_UNTIL_KEY, on ? weekEnd(localDateString()) : null);
+    if (on && !deload) toggleDeload(true);
   }
 
   /** The log id for this exercise in this workout. New ones are created on the device and queued. */
@@ -548,7 +570,7 @@ export default function LogPage() {
         if (!top || score > top.score) top = { weight: w, reps: n, score };
       }
       const before = bestSet[ex.exercise_name];
-      if (top && before && top.score > before.score) prs.push({ name: ex.exercise_name, now: fmtSet(top.weight, top.reps), before: fmtSet(before.weight, before.reps) });
+      if (!deload && top && before && top.score > before.score) prs.push({ name: ex.exercise_name, now: fmtSet(top.weight, top.reps), before: fmtSet(before.weight, before.reps) });
     }
     const firstTime = Object.keys(bestSet).length === 0;
     const minutes = Math.max(1, Math.round((Date.now() - new Date(session.started_at).getTime()) / 60000));
@@ -704,6 +726,24 @@ export default function LogPage() {
       )}
 
       {error && <div role="alert" className="mb-4 rounded-xl bg-fl-s2 p-3 text-sm text-fl-bad">{error}</div>}
+
+      {exercises.length > 0 && (
+        <div className={`mb-4 rounded-2xl border p-3 text-sm ${deload ? 'border-fl-acc/60 bg-fl-tint' : 'border-fl-line'}`}>
+          <label className="flex items-center justify-between gap-3">
+            <span className="font-semibold">Deload workout</span>
+            <input type="checkbox" role="switch" aria-checked={deload} checked={deload} onChange={e => toggleDeload(e.target.checked)} className="h-5 w-5 accent-[var(--fl-acc)]" />
+          </label>
+          {deload && (
+            <>
+              <p className="mt-1 text-xs leading-relaxed text-fl-tx2">{DELOAD_HINT}</p>
+              <label className="mt-2 flex items-center justify-between gap-3 text-xs">
+                <span>Also the rest of this week (through Sunday, on this device)</span>
+                <input type="checkbox" checked={deloadWeek} onChange={e => toggleDeloadWeek(e.target.checked)} className="h-4 w-4 accent-[var(--fl-acc)]" />
+              </label>
+            </>
+          )}
+        </div>
+      )}
 
       {!session && (
         <div className="mb-4">

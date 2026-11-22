@@ -10,7 +10,8 @@ import { workingWeight, type PrevSet } from './progression.ts';
 import { RULES } from './rules.ts';
 
 export type StallSet = { weight: number; reps: number; set_type?: string | null; skipped?: boolean | null };
-export type StallSession = { sets: StallSet[] };
+/** is_deload: a planned light session. Skipped by the stall check: it neither counts as progress nor breaks it. */
+export type StallSession = { sets: StallSet[]; is_deload?: boolean | null };
 
 /** Working sets only: no warm-ups, no skipped sets, no empty sets. Order is kept. */
 export function workingSets(sets: StallSet[]): PrevSet[] {
@@ -45,7 +46,7 @@ export function progressed(prev: StallSession, next: StallSession): boolean {
  * is never stalled.
  */
 export function isStalled(sessionsOldestFirst: StallSession[], n: number = RULES.stall.sessions): boolean {
-  const eligible = sessionsOldestFirst.filter(s => snapshot(s) !== null);
+  const eligible = sessionsOldestFirst.filter(s => !s.is_deload && snapshot(s) !== null);
   if (eligible.length < n) return false;
   const last = eligible.slice(-n);
   for (let i = 1; i < last.length; i++) if (progressed(last[i - 1], last[i])) return false;
@@ -54,6 +55,7 @@ export function isStalled(sessionsOldestFirst: StallSession[], n: number = RULES
 
 export type LoggedSession = {
   completed_at: string;
+  is_deload?: boolean | null;
   exercise_logs: { exercise_id?: string | null; exercise_name: string; exercise_sets: StallSet[] }[];
 };
 
@@ -66,7 +68,7 @@ export function historyByExercise(sessions: LoggedSession[]): Map<string, StallS
   for (const s of [...sessions].sort((a, b) => a.completed_at.localeCompare(b.completed_at))) {
     for (const log of s.exercise_logs) {
       const key = log.exercise_id ?? log.exercise_name.trim().toLowerCase();
-      out.set(key, [...(out.get(key) ?? []), { sets: log.exercise_sets }]);
+      out.set(key, [...(out.get(key) ?? []), { sets: log.exercise_sets, is_deload: s.is_deload ?? false }]);
     }
   }
   return out;

@@ -19,7 +19,8 @@ export type Op =
   | (Base & { kind: 'log'; payload: LogPayload })
   | (Base & { kind: 'set'; peId: string; idx: number; payload: SetPayload })
   | (Base & { kind: 'del'; peId: string; idx: number; setId: string })
-  | (Base & { kind: 'effort'; logId: string; effort: Effort | null });
+  | (Base & { kind: 'effort'; logId: string; effort: Effort | null })
+  | (Base & { kind: 'deload'; isDeload: boolean });
 
 export type Outcome = 'ok' | 'transient' | 'permanent';
 export type Store = { get(): string | null; set(v: string): void };
@@ -36,6 +37,8 @@ export function enqueue(ops: Op[], op: Op): Op[] {
   if (op.kind === 'log') return ops.some(o => o.kind === 'log' && o.payload.id === op.payload.id) ? ops : [...ops, op];
   // A newer effort answer for the same exercise replaces the pending one.
   if (op.kind === 'effort') return [...ops.filter(o => !(o.kind === 'effort' && o.logId === op.logId)), op];
+  // Deload on/off for a workout: the latest choice replaces a pending one.
+  if (op.kind === 'deload') return [...ops.filter(o => !(o.kind === 'deload' && o.sessionId === op.sessionId)), op];
   const setId = op.kind === 'set' ? op.payload.id : op.setId;
   // A newer edit or delete of the same set replaces older pending ones for it.
   const kept = ops.filter(o => !((o.kind === 'set' && o.payload.id === setId) || (o.kind === 'del' && o.setId === setId)));
@@ -78,16 +81,17 @@ export const withoutSession = (ops: Op[], sessionId: string) => ops.filter(o => 
 
 /** What the device knows about a set that the server may not: pending ('local'), rejected ('failed'), or deleted. */
 export function overlay(ops: Op[], sessionId: string):
-  { sets: { peId: string; idx: number; payload: SetPayload; failed: boolean }[]; deleted: Set<string>; logIds: Record<string, string>; efforts: Record<string, Effort | null> } {
+  { sets: { peId: string; idx: number; payload: SetPayload; failed: boolean }[]; deleted: Set<string>; logIds: Record<string, string>; efforts: Record<string, Effort | null>; deload?: boolean } {
   const sets: { peId: string; idx: number; payload: SetPayload; failed: boolean }[] = []; const deleted = new Set<string>(); const logIds: Record<string, string> = {};
-  const efforts: Record<string, Effort | null> = {};
+  const efforts: Record<string, Effort | null> = {}; let deload: boolean | undefined;
   for (const o of forSession(ops, sessionId)) {
     if (o.kind === 'set') sets.push({ peId: o.peId, idx: o.idx, payload: o.payload, failed: !!o.failed });
     else if (o.kind === 'del') deleted.add(o.setId);
     else if (o.kind === 'effort') efforts[o.logId] = o.effort;
+    else if (o.kind === 'deload') deload = o.isDeload;
     else logIds[o.payload.exercise_name] = o.payload.id;
   }
-  return { sets, deleted, logIds, efforts };
+  return { sets, deleted, logIds, efforts, deload };
 }
 
 export const newId = (): string =>
