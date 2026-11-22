@@ -9,6 +9,8 @@ import {
 } from '../lib/push';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+// Shown on previews built against forgeload-dev, so testers can see they are not on the real database.
+const TEST_DB = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').includes('lwngtnwpycohbqimwqoh');
 
 function Switch({ on, title, sub, onToggle, disabled }: { on: boolean; title: string; sub: string; onToggle: () => void; disabled?: boolean }) {
   return (
@@ -93,6 +95,7 @@ export default function NotificationSettings() {
   const denied = permission() === 'denied';
   return (
     <section className="rounded-2xl border border-fl-line bg-fl-s1 p-5">
+      {TEST_DB && <p className="mb-2 inline-block rounded-full bg-fl-tint px-3 py-1 text-xs font-bold">Test database (forgeload-dev)</p>}
       <h2 className="mb-1 text-lg font-bold">Notifications</h2>
       <p className="mb-3 text-sm text-fl-tx2">All optional and off until you turn them on. They never show your weights or reps on the lock screen.</p>
 
