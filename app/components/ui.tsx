@@ -26,6 +26,7 @@ export const ui = {
 // Simple 24px line icons (same stroke style as the bottom bar).
 const PATHS = {
   up: 'M6 15l6-6 6 6',
+  grip: 'M5 8h14M5 12h14M5 16h14',
   down: 'M6 9l6 6 6-6',
   close: 'M6 6l12 12M18 6L6 18',
   arrowRight: 'M5 12h14M13 6l6 6-6 6',

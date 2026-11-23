@@ -5,6 +5,7 @@ import Link from 'next/link';
 import ExercisePicker from '../components/ExercisePicker';
 import HowTo from '../components/HowTo';
 import ScheduleEditor from '../components/ScheduleEditor';
+import ReorderList from '../components/ReorderList';
 import { pickCurrent, setCurrentPlan, storedPlanId } from '../lib/currentPlan';
 import { logEvent } from '../lib/events';
 import { TEMPLATES, forExperience } from '../lib/templates';
@@ -41,6 +42,7 @@ export default function PlanPage() {
   const [tplId, setTplId] = useState(TEMPLATES[0].id);
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState('');
+  const [reorderDay, setReorderDay] = useState(''); // the workout whose exercises are being reordered
   const [editSets, setEditSets] = useState('');
   const [editMin, setEditMin] = useState('');
   const [editMax, setEditMax] = useState('');
@@ -182,13 +184,12 @@ export default function PlanPage() {
     if (error) return setMessage('Error: ' + error.message);
     setUndo(null); await loadExercises(dayId);
   }
-  async function moveExercise(index: number, dir: -1 | 1) {
-    const j = index + dir;
-    if (j < 0 || j >= exercises.length) return;
-    const next = [...exercises];
-    [next[index], next[j]] = [next[j], next[index]];
-    setExercises(next);
-    await Promise.all(next.map((ex, i) => supabase.from('plan_exercises').update({ sort_order: i }).eq('id', ex.id)));
+  /** Saves a new exercise order for the selected workout (sort_order 0, 1, 2...). False if any write failed. */
+  async function saveOrder(ids: string[]): Promise<boolean> {
+    const res = await Promise.all(ids.map((id, i) => supabase.from('plan_exercises').update({ sort_order: i }).eq('id', id)));
+    if (res.some(r => r.error)) return false;
+    setExercises(prev => ids.map(id => prev.find(e => e.id === id)).filter((e): e is PlanEx => !!e));
+    return true;
   }
   async function removeExercise(id: string) {
     const name = exercises.find(e => e.id === id)?.exercise_name ?? 'this exercise';
@@ -288,8 +289,19 @@ export default function PlanPage() {
               </div>
               {renaming?.kind === 'day' && renameBox('Rename workout to')}
 
+              {exercises.length > 1 && reorderDay !== dayId && (
+                <div className="mt-1 flex justify-end">
+                  <button onClick={() => { setEditId(''); setReorderDay(dayId); }} className={`${ui.textBtn} flex items-center gap-1`}><Icon name="grip" size={16} /> Reorder</button>
+                </div>
+              )}
+              {reorderDay === dayId ? (
+                <div className="mt-2">
+                  <ReorderList items={exercises.map(ex => ({ id: ex.id, title: ex.exercise_name, sub: `${ex.target_sets} sets × ${ex.rep_min}-${ex.rep_max} reps` }))}
+                    onSave={saveOrder} onDone={() => { setReorderDay(''); void loadExercises(dayId); }} />
+                </div>
+              ) : (
               <ul className="mt-2 divide-y divide-fl-line">
-                {exercises.map((ex, i) => (
+                {exercises.map((ex) => (
                   <li key={ex.id} className="py-3">
                     <button onClick={() => (editId === ex.id ? setEditId('') : startEdit(ex))} aria-expanded={editId === ex.id}
                       className="flex w-full items-center gap-3 py-1 text-left">
@@ -305,8 +317,6 @@ export default function PlanPage() {
                         {numberFields([['Sets', editSets, setEditSets], ['Min reps', editMin, setEditMin], ['Max reps', editMax, setEditMax]])}
                         <button onClick={saveEdit} className={ui.primary}>Save</button>
                         <div className="flex flex-wrap gap-2 pt-1">
-                          <button onClick={() => moveExercise(i, -1)} disabled={i === 0} className={ui.chip}><Icon name="up" size={16} /> Move up</button>
-                          <button onClick={() => moveExercise(i, 1)} disabled={i === exercises.length - 1} className={ui.chip}><Icon name="down" size={16} /> Move down</button>
                           <button onClick={() => removeExercise(ex.id)} className={`${ui.chip} ml-auto text-fl-bad`}>Remove</button>
                         </div>
                         {repFor === ex.id ? (
@@ -326,6 +336,7 @@ export default function PlanPage() {
                   </li>
                 ))}
               </ul>
+              )}
               {exercises.length === 0 && <p className={`${ui.sub} py-2`}>No exercises yet.</p>}
 
               <div className="mt-4 space-y-2 border-t border-fl-line pt-4">
