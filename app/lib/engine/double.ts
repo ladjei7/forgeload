@@ -106,8 +106,9 @@ export function recommendDouble(sessions: PastSession[], rx: Prescription, p: Ex
   let reason: string;
   if (missing > 0 && !raised.length) reason = bw ? `Do all ${rx.sets} sets before moving on. Last time you did ${done.length}.` : `Do all ${rx.sets} sets at ${w(W)} before going up. Last time ${done.length} ${done.length === 1 ? 'was' : 'were'} at ${w(W)}.`;
   else if (low < rx.repMin) reason = `Your lowest set was ${low}${unitWord}, under the ${rx.repMin} minimum. ${stay} and build it back up.`;
-  else if (raised.length === 1) reason = `${stay} and aim for ${t.at(raised[0])}${unitWord} on set ${raised[0] + 1}. Keep the other sets where they were.`;
+  else if (raised.length === 1) reason = `${stay} and aim for at least ${t.at(raised[0])}${unitWord} on set ${raised[0] + 1}. Keep the other sets at least where they were.`;
   else reason = `${stay} and add a little on your weakest sets.`;
+  details.push('Targets are a minimum: do more if you can. Next time builds on what you actually log.');
   details.push(`Once every set reaches ${rx.repMax}${unitWord}, ${p.load === 'assisted' ? 'use less assistance' : W === 0 ? 'make it harder' : `go up to ${w(loadableWeight(W + p.step, u))}`}.`);
 
   let alternative: Recommendation['alternative'];

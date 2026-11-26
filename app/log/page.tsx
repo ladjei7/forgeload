@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase';
 import { latestForTarget, type PrevSet } from '../lib/progression';
 import { recommend, buildProfile, headline, stepText, type Recommendation, type ExerciseSettings, type PastSession } from '../lib/engine';
 import { toSessions, exerciseKey, type DbLog } from '../lib/engine/fromDb';
+import { resolveEntry, type Entry } from '../lib/setEntry';
 import { DELOAD_UNTIL_KEY, DELOAD_HINT, deloadByDefault, weekEnd } from '../lib/deload';
 import { savePrefs } from '../lib/prefs';
 import { scheduleRestAlert, cancelRestAlert, beepOn, beep, unlockAudio, deviceRegistered, restAlertsOn } from '../lib/push';
@@ -119,6 +120,7 @@ export default function LogPage() {
 
   const logIds = useRef<Record<string, string>>({});
   const lastTap = useRef<Record<string, number>>({});
+  const [confirmKey, setConfirmKey] = useState<string | null>(null); // a set waiting for "yes, I hit the target"
   const rowsRef = useRef(rows);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
 
@@ -538,7 +540,18 @@ export default function LogPage() {
     setRows(r => ({ ...r, [exId]: r[exId].map((row, idx) => (idx === i ? { ...row, ...patch } : row)) }));
   }
 
-  async function toggleSet(ex: PlanEx, i: number) {
+  /** What this set would be logged as. Numbers not typed come from today's target (or last time) and count as suggestions. */
+  function entryFor(ex: PlanEx, i: number, row: SetRow): Entry {
+    const t = targets[ex.id];
+    const p = prev[ex.exercise_name]?.sets[i] ?? prev[ex.exercise_name]?.sets.at(-1);
+    const tReps = t?.repsBySet?.at(i) ?? t?.repsBySet?.at(-1);
+    return resolveEntry({ typedWeight: row.weight, typedReps: row.reps, targetWeight: t?.weight ?? null, targetReps: tReps ?? null,
+      prevWeight: t?.weight == null ? p?.weight ?? null : null, prevReps: t?.action === 'review' ? p?.reps ?? null : null, emptyWeightIsZero: profiles[ex.id]?.load !== 'external' });
+  }
+  const entryText = (ex: PlanEx, e: Entry) => !e.ok ? '' : `${e.weight === 0 && profiles[ex.id]?.load !== 'external' ? 'Bodyweight' : `${e.weight} ${unitLabel(unit)}`} × ${e.reps}${profiles[ex.id]?.measure === 'seconds' ? 's' : ''}`;
+
+  /** `confirmed`: the tap itself named the numbers ("Hit target: 100 lb × 10"), so suggestions may be saved. */
+  async function toggleSet(ex: PlanEx, i: number, confirmed = false) {
     unlockAudio(); // a tap: lets the rest-end beep play later
     if (!session) return;
     const key = `${ex.id}:${i}`;
@@ -554,18 +567,16 @@ export default function LogPage() {
       void syncNow();
       return;
     }
-    // Fast path: an empty box means "use the suggested number".
+    // A suggested number is saved only after an explicit "yes": a target is never silently recorded as performance.
     const t = targets[ex.id];
-    const p = prev[ex.exercise_name]?.sets[i] ?? prev[ex.exercise_name]?.sets.at(-1);
-    const tReps = t.repsBySet?.at(i) ?? t.repsBySet?.at(-1);
-    const weightStr = row.weight !== '' ? row.weight : t.weight !== null ? String(t.weight) : p ? String(p.weight) : '';
-    const repsStr = row.reps !== '' ? row.reps : tReps !== undefined ? String(tReps) : p && t.action === 'review' ? String(p.reps) : '';
-    const isBw = profiles[ex.id]?.load !== 'external';
-    const weight = isBw && weightStr === '' ? 0 : parseFloat(weightStr), reps = parseInt(repsStr, 10);
-    if (!Number.isFinite(weight) || !Number.isFinite(reps) || reps <= 0) {
-      setRowError({ key, text: `Enter the weight${repsStr === '' ? ' and reps' : ''} for set ${i + 1} first.` });
+    const e = entryFor(ex, i, row);
+    if (!e.ok) {
+      setRowError({ key, text: `Enter the ${e.missing.join(' and ')} for set ${i + 1} first.` });
       return;
     }
+    if (e.suggested && !confirmed && confirmKey !== key) { setConfirmKey(key); return; }
+    setConfirmKey(null);
+    const { weight, reps } = e;
     // Stored on the device first (survives refresh and app close), then synced. Shown as saved to
     // the account only after the server confirms.
     const logId = logIdFor(ex);
@@ -996,12 +1007,14 @@ export default function LogPage() {
                             onChange={e => setRow(ex.id, ai, { rir: e.target.value.replace(/\D/g, '').slice(0, 2) })} className={`${inputCls} !h-12 !w-20`} />
                         </label>
                       )}
-                      <button onClick={() => toggleSet(ex, ai)}
+                      {(() => { const fe = entryFor(ex, ai, r); const sug = fe.ok && fe.suggested; return (<>
+                      <button onClick={() => toggleSet(ex, ai, true)}
                         className="mt-3 h-16 w-full rounded-2xl bg-fl-acc text-xl font-bold text-fl-on-acc">
-                        Complete set {ai + 1}
+                        {sug ? `Hit target: ${entryText(ex, fe)}` : `Complete set ${ai + 1}`}
                       </button>
+                      <p className="mt-2 text-center text-xs text-fl-tx2">{sug ? 'Did something different? Type it first.' : 'Logs exactly what you typed.'}</p>
+                      </>); })()}
                       {rowError?.key === `${ex.id}:${ai}` && <p className="mt-2 text-center text-sm font-semibold text-fl-bad" role="alert">⚠ {rowError.text}</p>}
-                      <p className="mt-2 text-center text-xs text-fl-tx2">Empty boxes use the target.</p>
                     </div>
                   ) : <p className="font-semibold text-fl-ok">✓ All sets saved for this exercise.</p>}
                   {calibBlock(ex, rs, bw)}
@@ -1058,6 +1071,12 @@ export default function LogPage() {
                         onChange={e => setRow(ex.id, i, { rir: e.target.value.replace(/\D/g, '').slice(0, 2) })} className={`${inputCls} !h-10 !w-16`} />
                     </label>
                   ))}
+                {confirmKey === `${ex.id}:${i}` && !r.done && (() => { const ce = entryFor(ex, i, r); return ce.ok && ce.suggested ? (
+                  <div role="group" aria-label={`Confirm set ${i + 1}`} className="mt-1 flex flex-wrap items-center justify-end gap-2 text-sm">
+                    <span className="text-fl-tx2">Log the target, {entryText(ex, ce)}?</span>
+                    <button onClick={() => toggleSet(ex, i, true)} className="h-10 rounded-lg bg-fl-acc px-3 font-semibold text-fl-on-acc">Yes, I did that</button>
+                    <button onClick={() => setConfirmKey(null)} className="h-10 rounded-lg bg-fl-s2 px-3">Change</button>
+                  </div>) : null; })()}
                 {r.state === 'local' && !ob.online && <p className="mt-1 text-right text-xs text-fl-tx2" role="status">On this device. Syncs when you reconnect.</p>}
                 {r.state === 'failed' && <p className="mt-1 text-right text-xs text-fl-bad" role="alert">Not saved to your account. Tap ↻ to retry.</p>}
                 {rowError?.key === `${ex.id}:${i}` && <p className="mt-1 text-right text-sm font-semibold text-fl-bad" role="alert">⚠ {rowError.text}</p>}

@@ -295,3 +295,85 @@ test('database rows: unit conversion, order, set types, prescription, incomplete
   assert.deepEqual(s[0].prescription, { sets: 3, repMin: 6, repMax: 8 });
   assert.equal(exerciseKey({ exercise_id: null, exercise_name: ' Cable Fly ' }), 'name:cable fly');
 });
+
+// ---------- production checklist (items 1, 3, 4, 5) ----------
+test('item 1: +1 on the weakest set only; the rest keep what you did (minimum, not a cap)', () => {
+  const t = run([sess([[100, 9], [100, 8], [100, 8], [100, 8]])], rx(4, 8, 12));
+  assert.deepEqual(t.repsBySet, [9, 9, 8, 8]); assert.match(t.reason, /at least 9 on set 2/);
+  assert.ok(t.details.some(d => /Targets are a minimum/.test(d)));
+});
+test('item 1: beating the target moves the next target from what you actually did', () => {
+  const asked = run([sess([[100, 8], [100, 8], [100, 8]])], rx(3, 8, 12)).repsBySet; // [9, 8, 8]
+  const did = run([sess([[100, 8], [100, 8], [100, 8]]), sess([[100, 11], [100, 10], [100, 10]])], rx(3, 8, 12)).repsBySet;
+  assert.deepEqual(asked, [9, 8, 8]); assert.deepEqual(did, [11, 11, 10]);
+});
+test('item 3: the never-lower floor applies only at the same weight; after an increase targets reset to the bottom', () => {
+  const up = run([sess([[100, 12], [100, 12], [100, 12]])], rx(3, 8, 12));
+  assert.equal(up.action, 'add_weight'); assert.equal(up.weight, 105); assert.deepEqual(up.repsBySet, [8, 8, 8]);
+  // first session at the new weight: the floor is what was done at 105, not the 12s at 100
+  const next = run([sess([[100, 12], [100, 12], [100, 12]]), sess([[105, 9], [105, 8], [105, 7]])], rx(3, 8, 12));
+  assert.equal(next.weight, 105); assert.deepEqual(next.repsBySet, [9, 8, 8]);
+});
+test('item 3: going up needs EVERY planned set at the top, at one weight', () => {
+  assert.equal(run([sess([[100, 12], [100, 12], [100, 11]])], rx(3, 8, 12)).action, 'add_reps');
+  assert.equal(run([sess([[100, 12], [100, 12]])], rx(3, 8, 12)).action, 'hold');
+  assert.equal(run([sess([[100, 12], [100, 12], [105, 12]])], rx(3, 8, 12)).weight, 100, 'mixed weights: no increase from the 100s');
+});
+test('item 3: someone who logs a different weight than suggested is tracked at that weight', () => {
+  const t = run([sess([[100, 12], [100, 12], [100, 12]]), sess([[110, 8], [110, 8], [110, 8]])], rx(3, 8, 12));
+  assert.equal(t.weight, 110); assert.deepEqual(t.repsBySet, [9, 8, 8]);
+});
+test('item 4: dumbbell steps and targets are per dumbbell, in every message', () => {
+  const t = run([sess([[50, 10], [50, 10], [50, 10]])], rx(3, 8, 10), dumbbell);
+  assert.equal(t.weight, 55, 'never 60 (two dumbbells) or 52.5 (half)');
+  assert.ok(t.details.some(d => d.includes('(per dumbbell)'))); assert.ok(t.details.some(d => d.includes('5 lb per dumbbell')));
+  assert.equal(stepText(buildProfile({ equipment: 'Kettlebell' }, 'kg')), '4 kg per kettlebell');
+  assert.equal(stepText(barbell), '5 lb', 'barbells: total, no per-hand wording');
+});
+test('item 4: your own step overrides every equipment default, in lb and kg', () => {
+  for (const eq of ['Barbell', 'Dumbbell', 'Machine', 'Cable', 'Kettlebell', 'Bodyweight']) {
+    const p = buildProfile({ equipment: eq }, 'lb', { weightStepLb: 2.5 });
+    assert.equal(p.step, 2.5, eq); assert.equal(p.stepSource, 'user');
+  }
+  assert.equal(buildProfile({ equipment: 'Machine' }, 'kg', { weightStepLb: 11.02 }).step, 5);
+  assert.equal(buildProfile({ equipment: 'Machine' }, 'lb', { weightStepLb: 0 }).stepSource, 'equipment', 'a zero step is ignored');
+});
+test('item 4: assistance moves the right way in every branch', () => {
+  const top = run([sess([[40, 10], [40, 10], [40, 10]])], rx(3, 8, 10), assisted);
+  assert.equal(top.action, 'less_assistance'); assert.ok(top.weight! < 40);
+  const floor = run([sess([[5, 10], [5, 10], [5, 10]])], rx(3, 8, 10), assisted);
+  assert.equal(floor.weight, 0, 'never below zero assistance');
+  const mid = run([sess([[40, 9], [40, 8], [40, 8]])], rx(3, 8, 10), assisted);
+  assert.equal(mid.weight, 40, 'same assistance while earning reps');
+});
+test('item 5: warm-ups, drop sets and skipped sets never move a target', () => {
+  const clean = run([sess([[100, 10], [100, 9], [100, 9]])], rx(3, 8, 10));
+  const noisy = sess([[45, 15, 'warmup'], [135, 3, 'warmup'], [100, 10], [100, 9], [100, 9], [60, 20, 'drop']]);
+  noisy.sets.push({ weight: 150, reps: 2, skipped: true });
+  const t = run([noisy], rx(3, 8, 10));
+  assert.equal(t.weight, clean.weight); assert.deepEqual(t.repsBySet, clean.repsBySet);
+});
+test('item 5: skipped or empty sessions and deloads are invisible to targets', () => {
+  const base = sess([[100, 10], [100, 9], [100, 9]]);
+  const empty = sess([[100, 0], [100, 0]]);
+  const skipped = sess([[100, 4]]); skipped.sets[0].skipped = true;
+  const deload = sess([[80, 6], [80, 6]], { isDeload: true });
+  const t = run([base, empty, skipped, deload], rx(3, 8, 10));
+  assert.equal(t.basedOn?.at, base.at); assert.deepEqual(t.repsBySet, [10, 10, 9]);
+});
+test('item 5: missing or invalid reps never count as performance', () => {
+  const s = sess([[100, 10], [100, 10]]);
+  s.sets.push({ weight: 100, reps: NaN }, { weight: 100, reps: -3 }, { weight: NaN, reps: 10 });
+  const t = run([s], rx(2, 8, 10));
+  assert.equal(t.action, 'add_weight');
+});
+test('item 5: changed set counts (fewer or more than planned) do not overstate progress', () => {
+  assert.equal(run([sess([[100, 10], [100, 10]])], rx(4, 8, 10)).action, 'hold');
+  assert.deepEqual(run([sess([[100, 9], [100, 9], [100, 9], [100, 9], [100, 6]])], rx(3, 8, 10)).repsBySet, [10, 9, 9]);
+});
+test('item 5: ambiguous mixed-weight history gives no number at all', () => {
+  for (const sets of [[[100, 10], [110, 8], [120, 6]], [[60, 12], [80, 10], [100, 8], [120, 6]], [[100, 8], [120, 5]]] as S[][]) {
+    const t = run([sess(sets)], rx(3, 6, 10));
+    assert.equal(t.action, 'review'); assert.equal(t.weight, null); assert.equal(t.repsBySet, null);
+  }
+});
