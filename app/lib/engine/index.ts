@@ -13,7 +13,7 @@ export function recommend(sessions: PastSession[], rx: Prescription, profile: Ex
     return s.recommend({ sessions, rx, profile });
   } catch {
     return { strategy: s.id, version: s.version, action: 'review', weight: null, repsBySet: null, measure: profile.measure, restSeconds: restFor(profile, rx),
-      reason: 'Couldn’t work out a target this time. Log as usual; your sets are saved normally.', details: [], basedOn: null };
+      short: 'No target this time. Log as usual.', reason: 'Couldn’t work out a target this time. Log as usual; your sets are saved normally.', details: [], basedOn: null };
   }
 }
 

@@ -50,9 +50,11 @@ export type Recommendation = {
   repsBySet: number[] | null;     // one target per planned set (reps or seconds); null = none
   measure: 'reps' | 'seconds';
   restSeconds: number;
-  reason: string;                 // one short sentence for the workout screen
+  short: string;                  // one short line shown on the card by default
+  reason: string;                 // the full sentence, shown under "Why?" 
   details: string[];              // "Why this target?" lines
-  caution?: string;               // something uncertain the person should know
+  caution?: string;               // something uncertain the person should know (full)
+  cautionShort?: string;          // the same, in a few words for the card
   alternative?: { weight: number; repsBySet: number[]; label: string; reason: string }; // e.g. a lighter option after repeated misses
   basedOn: { at: string; sessionIds: string[] } | null;
 };

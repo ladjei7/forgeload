@@ -121,6 +121,8 @@ export default function LogPage() {
   const logIds = useRef<Record<string, string>>({});
   const lastTap = useRef<Record<string, number>>({});
   const [confirmKey, setConfirmKey] = useState<string | null>(null); // a set waiting for "yes, I hit the target"
+  const [whyOpen, setWhyOpen] = useState<Record<string, boolean>>({}); // "Why?" details per exercise
+  const [openDone, setOpenDone] = useState<Record<string, boolean>>({}); // finished exercises the person unfolded
   const rowsRef = useRef(rows);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
 
@@ -421,6 +423,16 @@ export default function LogPage() {
 
   // ---------- actions ----------
 
+  /** After a set, keep the next one on screen above the rest timer: the next row, or the next exercise's first row. */
+  function bringNextIntoView(ex: PlanEx, i: number) {
+    const rs = rowsRef.current[ex.id] ?? [];
+    const nextHere = rs.findIndex((r, k) => k > i && !r.done);
+    const idx = exercises.findIndex(e => e.id === ex.id);
+    const nextEx = nextHere >= 0 ? null : exercises.slice(idx + 1).find(e => (rowsRef.current[e.id] ?? []).some(r => !r.done));
+    const id = focus ? 'focus-entry' : nextHere >= 0 ? `set-${ex.id}-${nextHere}` : nextEx ? `set-${nextEx.id}-${(rowsRef.current[nextEx.id] ?? []).findIndex(r => !r.done)}` : '';
+    if (!id) return;
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 120);
+  }
   /** "Use 185 lb today": fills the sets not done yet with the lighter option. Nothing is saved until a set is logged. */
   function applyAlternative(ex: PlanEx) {
     const alt = targets[ex.id]?.alternative; if (!alt) return;
@@ -453,7 +465,12 @@ export default function LogPage() {
     const r: Rest = rest.paused !== undefined ? { end: Date.now() + rest.paused * 1000, total: rest.total } : { ...rest, paused: restLeft };
     setNow(Date.now()); setRest(r); lsSet(LS.rest, JSON.stringify(r));
   }
-  function toggleFocus() { setFocus(f => { lsSet('fl-log-mode', f ? 'standard' : 'focus'); return !f; }); setFocusId(''); }
+  function toggleFocus() {
+    const turningOn = !focus;
+    setFocus(f => { lsSet('fl-log-mode', f ? 'standard' : 'focus'); return !f; }); setFocusId('');
+    // Land on the set entry, not wherever the list happened to be scrolled.
+    if (turningOn && session) setTimeout(() => document.getElementById('focus-entry')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 150);
+  }
   function stopRest() { setRest(null); lsSet(LS.rest, null); }
 
   async function changePlan(pid: string) {
@@ -585,6 +602,7 @@ export default function LogPage() {
       payload: { id: setId, exercise_log_id: logId, set_number: i + 1, reps, weight: toLb(weight, unit), completed: true, set_type: row.kind ?? 'working', ...(trackRir ? { rir: rirValue(row.rir) } : {}) } });
     setRow(ex.id, i, { weight: String(weight), reps: String(reps), done: true, setId, state: 'local' });
     startRest(t.restSeconds);
+    bringNextIntoView(ex, i);
     void syncNow();
   }
 
@@ -680,7 +698,8 @@ export default function LogPage() {
   const currentEx = session ? exercises.find(e => (rows[e.id] ?? []).some(r => !r.done))?.id : undefined;
 
   const card = 'rounded-2xl bg-fl-s1 border border-fl-line p-4';
-  const inputCls = 'h-14 w-full min-w-0 rounded-xl border border-fl-field bg-fl-bg text-center text-2xl font-semibold tabular-nums text-fl-tx outline-none placeholder:text-fl-tx2 focus:border-fl-acc focus-visible:ring-2 focus-visible:ring-fl-acc/50 disabled:opacity-60';
+  // Typed numbers: bright and semi-bold. Suggested numbers (placeholders): dimmer and regular weight, still readable.
+  const inputCls = 'h-12 w-full min-w-0 rounded-xl border border-fl-field bg-fl-bg text-center text-xl font-semibold tabular-nums text-fl-tx outline-none placeholder:font-normal placeholder:text-fl-tx2/75 focus:border-fl-acc focus-visible:ring-2 focus-visible:ring-fl-acc/50 disabled:opacity-40';
 
   /** After the first and last exercise: one optional tap about how hard it felt. Never blocks anything. */
   const effortBlock = (ex: PlanEx, rs: SetRow[]) => {
@@ -786,6 +805,10 @@ export default function LogPage() {
     );
   }
 
+  const deloadChip = (
+    <button role="switch" aria-checked={deload} aria-label="Deload workout" onClick={() => toggleDeload(!deload)}
+      className={`h-9 rounded-full px-3 text-xs font-semibold ${deload ? 'bg-fl-acc text-fl-on-acc' : 'border border-fl-field text-fl-tx'}`}>{deload ? 'Deload on' : 'Deload'}</button>
+  );
   return (
     <main className={`mx-auto max-w-xl px-4 pt-4 text-fl-tx ${rest ? 'pb-64' : 'pb-44'}`}>
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -801,7 +824,10 @@ export default function LogPage() {
         <div className="mb-4" role="progressbar" aria-label="Sets logged" aria-valuemin={0} aria-valuemax={totalSets} aria-valuenow={doneSets}>
           <div className="mb-1 flex items-center justify-between text-xs text-fl-tx2">
             <span>{doneSets} of {totalSets} sets logged</span>
-            <button onClick={toggleFocus} aria-pressed={focus} className={`h-9 rounded-full px-3 text-xs font-semibold ${focus ? 'bg-fl-tx text-fl-bg' : 'border border-fl-field text-fl-tx'}`}>{focus ? 'Focus mode on' : 'Focus mode'}</button>
+            <span className="flex gap-2">
+              {deloadChip}
+              <button onClick={toggleFocus} aria-pressed={focus} className={`h-9 rounded-full px-3 text-xs font-semibold ${focus ? 'bg-fl-tx text-fl-bg' : 'border border-fl-field text-fl-tx'}`}>{focus ? 'Focus mode on' : 'Focus mode'}</button>
+            </span>
           </div>
           <div className="flex gap-[3px]">{Array.from({ length: totalSets }, (_, i) => <i key={i} className={`h-1 flex-1 rounded-sm ${i < doneSets ? 'bg-fl-ok' : 'bg-fl-s2'}`} />)}</div>
           {(() => {
@@ -820,21 +846,14 @@ export default function LogPage() {
 
       {error && <div role="alert" className="mb-4 rounded-xl bg-fl-s2 p-3 text-sm text-fl-bad">{error}</div>}
 
-      {exercises.length > 0 && (
-        <div className={`mb-4 rounded-2xl border p-3 text-sm ${deload ? 'border-fl-acc/60 bg-fl-tint' : 'border-fl-line'}`}>
-          <label className="flex items-center justify-between gap-3">
-            <span className="font-semibold">Deload workout</span>
-            <input type="checkbox" role="switch" aria-checked={deload} checked={deload} onChange={e => toggleDeload(e.target.checked)} className="h-5 w-5 accent-[var(--fl-acc)]" />
+      {!session && exercises.length > 0 && <div className="mb-3 flex justify-end">{deloadChip}</div>}
+      {exercises.length > 0 && deload && (
+        <div className="mb-3 rounded-2xl border border-fl-acc/60 bg-fl-tint p-3 text-sm">
+          <p className="text-xs leading-relaxed text-fl-tx2">{DELOAD_HINT}</p>
+          <label className="mt-2 flex min-h-9 items-center justify-between gap-3 text-xs">
+            <span>Also the rest of this week (through Sunday)</span>
+            <input type="checkbox" checked={deloadWeek} onChange={e => toggleDeloadWeek(e.target.checked)} className="h-5 w-5 accent-[var(--fl-acc)]" />
           </label>
-          {deload && (
-            <>
-              <p className="mt-1 text-xs leading-relaxed text-fl-tx2">{DELOAD_HINT}</p>
-              <label className="mt-2 flex items-center justify-between gap-3 text-xs">
-                <span>Also the rest of this week (through Sunday)</span>
-                <input type="checkbox" checked={deloadWeek} onChange={e => toggleDeloadWeek(e.target.checked)} className="h-4 w-4 accent-[var(--fl-acc)]" />
-              </label>
-            </>
-          )}
         </div>
       )}
 
@@ -896,16 +915,28 @@ export default function LogPage() {
         const loadNote = [m?.load === 'per_side' ? 'Weight is per side' : pf?.perDumbbell ? (m?.equipment === 'Kettlebell' ? 'Weight is per kettlebell' : 'Weight is per dumbbell') : '',
           assisted ? 'Weight is the assistance' : '', m?.unilateral ? 'Reps are per side' : ''].filter(Boolean).join(' · ');
         const so = settingsOpen[ex.id];
+        // A finished exercise folds to one line (sets + Show) once its effort question is answered or not asked.
+        const folded = !!session && !focus && rs.length > 0 && rs.every(r => r.done && r.state !== 'failed') && (!askEffort || efforts[ex.exercise_name] !== undefined) && !openDone[ex.id];
         return (
-          <section key={ex.id} className={`${card} mb-3 ${currentEx === ex.id ? '!border-fl-field' : ''}`}>
+          <section key={ex.id} aria-label={ex.exercise_name} className={`${card} mb-3 ${currentEx === ex.id ? '!border-fl-field' : ''} ${folded ? '!py-3' : ''}`}>
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-lg font-bold">{ex.exercise_name}</h2>
-              {session && rs.length > 0 && <span className="shrink-0 text-xs text-fl-tx2">{rs.filter(r => r.done).length}/{rs.length}</span>}
+              <h2 className="min-w-0 text-lg font-bold leading-snug">{folded && <span className="mr-1 text-fl-ok" aria-hidden="true">✓</span>}{ex.exercise_name}</h2>
+              {session && rs.length > 0 && <span className="shrink-0 text-xs tabular-nums text-fl-tx2">{rs.filter(r => r.done).length}/{rs.length}</span>}
             </div>
-            <div className="text-sm text-fl-tx2">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} {secs ? 'seconds' : 'reps'}{loadNote ? ` · ${loadNote}` : ''}</div>
-            <HowTo key={ex.exercise_id ?? ex.exercise_name} name={ex.exercise_name} exerciseId={ex.exercise_id} info={ex.exercise_id ? (m?.howto ?? undefined) : null} />
+            {folded ? (
+              <div className="flex items-center justify-between gap-2 text-sm text-fl-tx2">
+                <span className="truncate tabular-nums">{rs.map(r => `${r.weight}×${r.reps}`).join(', ')}</span>
+                <button onClick={() => setOpenDone(o => ({ ...o, [ex.id]: true }))} aria-expanded="false" className="-my-1.5 h-11 min-w-11 shrink-0 px-2 text-xs font-semibold underline underline-offset-2">Show</button>
+              </div>
+            ) : <>
+            <div className="text-xs text-fl-tx2">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} {secs ? 'seconds' : 'reps'}{loadNote ? ` · ${loadNote}` : ''}</div>
+            <div className="flex flex-wrap items-center gap-x-4">
+              <HowTo key={ex.exercise_id ?? ex.exercise_name} name={ex.exercise_name} exerciseId={ex.exercise_id} info={ex.exercise_id ? (m?.howto ?? undefined) : null} compact />
+              {session && !rs.some(r => r.done) && swapFor !== ex.id && <button onClick={() => { setSwapFor(ex.id); setSwapName(''); setSwapId(''); }} aria-label="Swap exercise" className="-my-1 h-11 min-w-11 px-2 text-sm text-fl-tx2 underline-offset-2 hover:underline">Swap</button>}
+              {session && rs.length > 0 && rs.every(r => r.done) && openDone[ex.id] && <button onClick={() => setOpenDone(o => ({ ...o, [ex.id]: false }))} className="-my-1 h-11 min-w-11 px-2 text-sm text-fl-tx2 underline-offset-2 hover:underline">Fold</button>}
+            </div>
             {readSwaps(session?.id)[ex.id] && <div className="text-xs text-fl-tx2">Swapped for today from {readSwaps(session?.id)[ex.id].fromName}</div>}
-            {session && !rs.some(r => r.done) && (swapFor === ex.id ? (
+            {session && !rs.some(r => r.done) && swapFor === ex.id && (
               <div className="mt-2 rounded-xl bg-fl-s2 p-3">
                 <div className="mb-2 text-sm text-fl-tx2">Swap {ex.exercise_name} for:</div>
                 <ExercisePicker value={swapName} onChange={setSwapName} onPick={x => setSwapId(x?.id ?? '')} />
@@ -925,17 +956,23 @@ export default function LogPage() {
                 </div>
                 <p className="mt-2 text-xs text-fl-tx2">Only today changes unless you tick the box. Your past sets stay in your history either way.</p>
               </div>
-            ) : <button onClick={() => { setSwapFor(ex.id); setSwapName(''); setSwapId(''); }} className="mt-1 h-9 text-sm text-fl-tx2 underline-offset-2 hover:underline">Swap exercise</button>)}
-            <details className="mb-3 mt-3 border-l-4 border-fl-acc pl-3">
-              <summary className="cursor-pointer list-none py-1">
-                <div className="text-[11px] uppercase tracking-wide text-fl-tx2">Today&apos;s target</div>
-                <div className="text-2xl font-semibold leading-tight tracking-tight tabular-nums">
-                  {t.action === 'start' ? (secs ? `Hold ${ex.rep_min}-${ex.rep_max}s` : bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : 'Find your starting weight') : headline(t, unitLabel(unit))}
-                </div>
-                <span className="mb-1 block text-sm text-fl-tx2">{t.reason}</span>
-                <span className="text-xs text-fl-tx2 underline">Why this target?</span>
-              </summary>
-              <div className="mt-2 text-xs leading-relaxed text-fl-tx2">
+            )}
+            {/* Today's target: the number and one short line; the full reasoning is one tap away. */}
+            <div className="mb-2 mt-2 border-l-4 border-fl-acc pl-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] uppercase tracking-wide text-fl-tx2">Today&apos;s target</span>
+                <button onClick={() => setWhyOpen(o => ({ ...o, [ex.id]: !o[ex.id] }))} aria-expanded={!!whyOpen[ex.id]} aria-controls={`why-${ex.id}`}
+                  className="-my-2 h-11 min-w-11 px-2 text-xs text-fl-tx2 underline underline-offset-2">{whyOpen[ex.id] ? 'Hide details' : 'Why?'}</button>
+              </div>
+              <div className="text-xl font-semibold leading-tight tracking-tight tabular-nums">
+                {t.action === 'start' ? (secs ? `Hold ${ex.rep_min}-${ex.rep_max}s` : bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : 'Find your starting weight') : headline(t, unitLabel(unit))}
+              </div>
+              <p className="text-sm leading-snug text-fl-tx2">{t.short}</p>
+              {t.cautionShort && <p role="note" className="mt-0.5 text-sm font-semibold leading-snug text-fl-acc">{t.cautionShort}</p>}
+              {whyOpen[ex.id] && (
+              <div id={`why-${ex.id}`} className="mt-2 text-xs leading-relaxed text-fl-tx2">
+                <p className="mb-1 text-sm text-fl-tx">{t.reason}</p>
+                {t.caution && <p className="mb-1">{t.caution}</p>}
                 {t.details.length > 0 && <ul className="list-disc space-y-0.5 pl-4">{t.details.map((d, k) => <li key={k}>{d}</li>)}</ul>}
                 <p className="mt-1">Rest: {Math.floor(t.restSeconds / 60)}:{String(t.restSeconds % 60).padStart(2, '0')}{pf && !bw && !secs ? ` · Step: ${stepText(pf)}` : ''}. It&apos;s a suggestion: anything you type wins.</p>
                 {so ? (
@@ -948,8 +985,8 @@ export default function LogPage() {
                         <input inputMode="numeric" value={so.rest} onChange={e => setSettingsOpen(o => ({ ...o, [ex.id]: { ...so, rest: e.target.value.replace(/\D/g, '').slice(0, 3), note: undefined } }))} className={`${inputCls} mt-1 !h-11`} /></label>
                     </div>
                     <div className="mt-2 flex gap-2">
-                      <button onClick={() => saveExSettings(ex)} className="h-10 flex-1 rounded-lg bg-fl-acc text-sm font-bold text-fl-on-acc">Save</button>
-                      <button onClick={() => setSettingsOpen(o => ({ ...o, [ex.id]: undefined }))} className="h-10 rounded-lg bg-fl-s1 px-3 text-sm">Cancel</button>
+                      <button onClick={() => saveExSettings(ex)} className="h-11 flex-1 rounded-lg bg-fl-acc text-sm font-bold text-fl-on-acc">Save</button>
+                      <button onClick={() => setSettingsOpen(o => ({ ...o, [ex.id]: undefined }))} className="h-11 rounded-lg bg-fl-s1 px-3 text-sm">Cancel</button>
                     </div>
                     {so.note && <p role="status" className="mt-2 text-xs text-fl-tx2">{so.note}</p>}
                   </div>
@@ -957,11 +994,12 @@ export default function LogPage() {
                   <button onClick={() => setSettingsOpen(o => ({ ...o, [ex.id]: { step: pf ? String(pf.step) : '', rest: String(t.restSeconds) } }))} className="mt-1 h-9 text-xs text-fl-tx2 underline underline-offset-2">Change step or rest for this exercise</button>
                 )}
               </div>
-            </details>
-            {t.caution && <p role="note" className="-mt-1 mb-2 rounded-lg bg-fl-s2 px-3 py-2 text-sm text-fl-tx2">{t.caution}</p>}
+              )}
+            </div>
             {t.alternative && session && !rs.every(r => r.done) && (
-              <button onClick={() => applyAlternative(ex)} className="mb-3 h-10 rounded-lg border border-fl-field px-3 text-sm font-semibold">{t.alternative.label}</button>
+              <button onClick={() => applyAlternative(ex)} className="mb-2 h-10 rounded-lg border border-fl-field px-3 text-sm font-semibold">{t.alternative.label}</button>
             )}
+            {!session && <p className="text-sm tabular-nums text-fl-tx2">{p?.sets.length ? `Last time: ${[...new Set(p.sets.map(x => x.weight))].length === 1 ? `${p.sets[0].weight} × ${p.sets.map(x => x.reps).join(', ')}` : p.sets.map(x => `${x.weight}×${x.reps}`).join(', ')}` : 'No history yet'}</p>}
 
             {focus && session && (() => {
               const ai = rs.findIndex(x => !x.done);
@@ -977,27 +1015,21 @@ export default function LogPage() {
                     </ul>
                   )}
                   {r ? (
-                    <div>
+                    <div id="focus-entry" className="scroll-mb-[150px] scroll-mt-[60px]">
                       <div className="mb-2 flex justify-between text-sm text-fl-tx2">
                         <span>Set {ai + 1} of {rs.length}</span>
                         {pv && <button type="button" onClick={() => setRow(ex.id, ai, { weight: String(pv.weight), reps: String(pv.reps) })} className="underline decoration-dotted underline-offset-4">Last time {pv.weight}×{pv.reps}</button>}
-                      </div>
-                      <div role="group" aria-label={`Set ${ai + 1} type`} className="mb-2 flex gap-1.5">
-                        {KINDS.map(k => (
-                          <button key={k.id || 'working'} type="button" aria-pressed={(r.kind ?? '') === k.id} onClick={() => setRow(ex.id, ai, { kind: k.id || undefined })}
-                            className={`h-8 rounded-full px-3 text-xs ${(r.kind ?? '') === k.id ? 'bg-fl-tx font-semibold text-fl-bg' : 'border border-fl-field text-fl-tx2'}`}>{k.label}</button>
-                        ))}
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <label className="text-xs uppercase tracking-wide text-fl-tx2">{wLabel}
                           <input aria-label={`${ex.exercise_name} set ${ai + 1} weight in ${longName(unit)}`} inputMode="decimal" value={r.weight}
                             placeholder={bw && !t.weight && !pv?.weight ? 'BW' : t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
-                            onChange={e => setRow(ex.id, ai, { weight: clean(e.target.value) })} className={`${inputCls} mt-1 !h-16 !text-3xl`} />
+                            onChange={e => setRow(ex.id, ai, { weight: clean(e.target.value) })} className={`${inputCls} mt-1 !h-14 !text-3xl`} />
                         </label>
                         <label className="text-xs uppercase tracking-wide text-fl-tx2">{rLabel}
                           <input aria-label={`${ex.exercise_name} set ${ai + 1} ${secs ? 'seconds' : 'reps'}`} inputMode="numeric" value={r.reps}
                             placeholder={tRep(ai) || (pv && t.action === 'review' ? String(pv.reps) : '')}
-                            onChange={e => setRow(ex.id, ai, { reps: e.target.value.replace(/\D/g, '') })} className={`${inputCls} mt-1 !h-16 !text-3xl`} />
+                            onChange={e => setRow(ex.id, ai, { reps: e.target.value.replace(/\D/g, '') })} className={`${inputCls} mt-1 !h-14 !text-3xl`} />
                         </label>
                       </div>
                       {trackRir && (
@@ -1009,12 +1041,19 @@ export default function LogPage() {
                       )}
                       {(() => { const fe = entryFor(ex, ai, r); const sug = fe.ok && fe.suggested; return (<>
                       <button onClick={() => toggleSet(ex, ai, true)}
-                        className="mt-3 h-16 w-full rounded-2xl bg-fl-acc text-xl font-bold text-fl-on-acc">
+                        className="mt-3 h-14 w-full rounded-2xl bg-fl-acc text-xl font-bold text-fl-on-acc">
                         {sug ? `Hit target: ${entryText(ex, fe)}` : `Complete set ${ai + 1}`}
                       </button>
                       <p className="mt-2 text-center text-xs text-fl-tx2">{sug ? 'Did something different? Type it first.' : 'Logs exactly what you typed.'}</p>
                       </>); })()}
                       {rowError?.key === `${ex.id}:${ai}` && <p className="mt-2 text-center text-sm font-semibold text-fl-bad" role="alert">⚠ {rowError.text}</p>}
+                      <div role="group" aria-label={`Set ${ai + 1} type`} className="mt-3 flex justify-center gap-1.5">
+                        {KINDS.map(k => (
+                          <button key={k.id || 'working'} type="button" aria-pressed={(r.kind ?? '') === k.id} onClick={() => setRow(ex.id, ai, { kind: k.id || undefined })}
+                            className={`h-8 rounded-full px-3 text-xs ${(r.kind ?? '') === k.id ? 'bg-fl-tx font-semibold text-fl-bg' : 'border border-fl-field text-fl-tx2'}`}>{k.label}</button>
+                        ))}
+                      </div>
+
                     </div>
                   ) : <p className="font-semibold text-fl-ok">✓ All sets saved for this exercise.</p>}
                   {calibBlock(ex, rs, bw)}
@@ -1023,23 +1062,24 @@ export default function LogPage() {
               );
             })()}
 
-            {!(focus && session) && <>
-            {trackRir && session && rirNote}
-            <div className="mb-1 grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3.25rem] gap-2 text-center text-[11px] uppercase tracking-wide text-fl-tx2">
+            {session && !focus && <>
+            {trackRir && rirNote}
+            <div className="mb-1 grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] gap-2 text-center text-[11px] uppercase tracking-wide text-fl-tx2">
               <span>Set</span><span>Previous</span><span>{wLabel}</span><span>{rLabel}</span><span className="sr-only">Done</span>
             </div>
             {rs.map((r, i) => {
               const pv = p?.sets[i] ?? p?.sets.at(-1);
+              const active = currentEx === ex.id && i === rs.findIndex(x => !x.done); // the next set to log
               return (
-                <div key={i} className="mb-2">
-                <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3.25rem] items-center gap-2">
+                <div key={i} id={`set-${ex.id}-${i}`} className="mb-1.5 scroll-mb-[190px] scroll-mt-[90px]">
+                <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] items-center gap-2">
                   <button type="button" disabled={!session || r.done} onClick={() => setRow(ex.id, i, { kind: r.kind === undefined ? 'warmup' : r.kind === 'warmup' ? 'drop' : undefined })}
                     aria-label={`Set ${i + 1}: ${r.kind === 'warmup' ? 'warm-up' : r.kind === 'drop' ? 'drop set' : 'working set'}. Tap to change the set type`}
                     className={`flex h-9 w-9 items-center justify-center rounded-[10px] text-sm font-bold ${r.done ? 'bg-fl-ok text-fl-on-ok' : r.state === 'failed' ? 'border-2 border-fl-bad text-fl-bad' : currentEx === ex.id && i === rs.findIndex(x => !x.done) ? 'border-2 border-fl-acc text-fl-acc' : 'border border-fl-field text-fl-tx2'}`}>{r.kind === 'warmup' ? 'W' : r.kind === 'drop' ? 'D' : i + 1}</button>
                   {pv && session && !r.done ? (
                     <button type="button" onClick={() => setRow(ex.id, i, { weight: String(pv.weight), reps: String(pv.reps) })}
                       aria-label={`Use last time: ${pv.weight} ${longName(unit)} for ${pv.reps} reps, for set ${i + 1}`}
-                      className="h-12 truncate rounded-lg text-center text-sm tabular-nums text-fl-tx2 underline decoration-dotted underline-offset-4">{pv.weight}×{pv.reps}</button>
+                      className="h-11 truncate rounded-lg text-center text-sm tabular-nums text-fl-tx2 underline decoration-dotted underline-offset-4">{pv.weight}×{pv.reps}</button>
                   ) : (
                     <span className="truncate text-center text-sm tabular-nums text-fl-tx2">{pv ? `${pv.weight}×${pv.reps}` : '-'}</span>
                   )}
@@ -1048,19 +1088,19 @@ export default function LogPage() {
                     inputMode="decimal" disabled={!session} value={r.weight}
                     placeholder={bw && !t.weight && !pv?.weight ? 'BW' : t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
                     onChange={e => setRow(ex.id, i, { weight: clean(e.target.value) })}
-                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : ''}`}
+                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : active ? '!border-fl-tx2 bg-fl-s1' : 'border-fl-line placeholder:!text-fl-tx2/50'}`}
                   />
                   <input
-                    aria-label={`${ex.exercise_name} set ${i + 1} reps`}
+                    aria-label={`${ex.exercise_name} set ${i + 1} ${secs ? 'seconds' : 'reps'}`}
                     inputMode="numeric" disabled={!session} value={r.reps}
                     placeholder={tRep(i) || (pv && t.action === 'review' ? String(pv.reps) : '')}
                     onChange={e => setRow(ex.id, i, { reps: e.target.value.replace(/\D/g, '') })}
-                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : ''}`}
+                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : active ? '!border-fl-tx2 bg-fl-s1' : 'border-fl-line placeholder:!text-fl-tx2/50'}`}
                   />
                   <button
                     aria-label={r.state === 'failed' ? `Set ${i + 1} not saved to your account. Retry` : r.state === 'local' ? `Set ${i + 1} saved on this device, waiting to sync. Tap to undo` : r.done ? `Set ${i + 1} saved to your account. Tap to undo` : `Log set ${i + 1}`} aria-pressed={r.done}
                     disabled={!session} onClick={() => toggleSet(ex, i)}
-                    className={`h-14 w-[3.25rem] rounded-xl text-xl font-bold disabled:opacity-40 ${r.state === 'failed' ? 'border-2 border-fl-bad bg-fl-bad/15 text-fl-bad' : r.state === 'local' ? 'border-2 border-dashed border-fl-ok text-fl-ok' : r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'}`}
+                    className={`h-12 w-12 rounded-xl text-xl font-bold disabled:opacity-40 ${r.state === 'failed' ? 'border-2 border-fl-bad bg-fl-bad/15 text-fl-bad' : r.state === 'local' ? 'border-2 border-dashed border-fl-ok text-fl-ok' : r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'}`}
                   >{r.state === 'failed' ? '↻' : r.state === 'local' ? '◌' : '✓'}</button>
                 </div>
                 {trackRir && session && (r.done
@@ -1074,8 +1114,8 @@ export default function LogPage() {
                 {confirmKey === `${ex.id}:${i}` && !r.done && (() => { const ce = entryFor(ex, i, r); return ce.ok && ce.suggested ? (
                   <div role="group" aria-label={`Confirm set ${i + 1}`} className="mt-1 flex flex-wrap items-center justify-end gap-2 text-sm">
                     <span className="text-fl-tx2">Log the target, {entryText(ex, ce)}?</span>
-                    <button onClick={() => toggleSet(ex, i, true)} className="h-10 rounded-lg bg-fl-acc px-3 font-semibold text-fl-on-acc">Yes, I did that</button>
-                    <button onClick={() => setConfirmKey(null)} className="h-10 rounded-lg bg-fl-s2 px-3">Change</button>
+                    <button onClick={() => toggleSet(ex, i, true)} className="h-11 rounded-lg bg-fl-acc px-3 font-semibold text-fl-on-acc">Yes, I did that</button>
+                    <button onClick={() => setConfirmKey(null)} className="h-11 rounded-lg bg-fl-s2 px-3">Change</button>
                   </div>) : null; })()}
                 {r.state === 'local' && !ob.online && <p className="mt-1 text-right text-xs text-fl-tx2" role="status">On this device. Syncs when you reconnect.</p>}
                 {r.state === 'failed' && <p className="mt-1 text-right text-xs text-fl-bad" role="alert">Not saved to your account. Tap ↻ to retry.</p>}
@@ -1092,6 +1132,7 @@ export default function LogPage() {
             )}
             {effortBlock(ex, rs)}
             </>}
+            </>}
           </section>
         );
       })}
@@ -1101,24 +1142,21 @@ export default function LogPage() {
       )}
 
       {rest && (
-        <div role="timer" aria-live="off" className="fixed inset-x-0 bottom-[78px] z-50 mx-auto max-w-xl rounded-2xl border border-fl-line bg-fl-s2 px-3 pb-3 pt-2.5 shadow-lg" style={{ width: 'calc(100% - 1.5rem)' }}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-baseline gap-2">
-              <span className="text-[11px] uppercase tracking-wide text-fl-tx2">{restLeft === 0 ? 'Rest over' : rest.paused !== undefined ? 'Rest paused' : 'Rest'}</span>
-              <span className={`text-2xl font-bold tabular-nums ${restLeft === 0 ? 'text-fl-ok' : ''}`}>{mmss(restLeft)}</span>
+        <div role="timer" aria-live="off" className="fixed inset-x-0 bottom-[calc(82px+env(safe-area-inset-bottom))] z-50 mx-auto max-w-xl overflow-hidden rounded-2xl border border-fl-line bg-fl-s2 shadow-lg" style={{ width: 'calc(100% - 1.5rem)' }}>
+          {/* One compact row, so the next set stays visible above it. */}
+          {restLeft > 0 && <div className="h-1 bg-fl-s1" aria-hidden="true"><div className="h-full bg-fl-acc transition-[width] duration-1000 ease-linear" style={{ width: `${Math.min(100, (restLeft / Math.max(1, rest.total)) * 100)}%` }} /></div>}
+          <div className="flex items-center gap-1.5 px-2 py-1.5">
+            <div className="min-w-0 flex-1 pl-1 leading-none">
+              <div className="text-[10px] uppercase tracking-wide text-fl-tx2">{restLeft === 0 ? 'Rest over' : rest.paused !== undefined ? 'Paused' : 'Rest'}</div>
+              <div className={`text-2xl font-bold tabular-nums ${restLeft === 0 ? 'text-fl-ok' : ''}`}>{mmss(restLeft)}</div>
             </div>
-            <button onClick={stopRest} className="h-10 shrink-0 rounded-xl bg-fl-acc px-4 text-sm font-bold text-fl-on-acc">{restLeft === 0 ? 'Close' : 'Skip rest'}</button>
+            {restLeft > 0 && <>
+              <button onClick={() => adjustRest(-15)} aria-label="15 seconds less rest" className="h-11 w-12 rounded-xl border border-fl-field text-sm">-15</button>
+              <button onClick={() => adjustRest(15)} aria-label="15 seconds more rest" className="h-11 w-12 rounded-xl border border-fl-field text-sm">+15</button>
+              <button onClick={togglePause} aria-pressed={rest.paused !== undefined} aria-label={rest.paused !== undefined ? 'Resume rest' : 'Pause rest'} className="h-11 w-11 rounded-xl border border-fl-field text-base">{rest.paused !== undefined ? '▶' : '❚❚'}</button>
+            </>}
+            <button onClick={stopRest} aria-label={restLeft === 0 ? 'Close rest timer' : 'Skip rest'} className="h-11 shrink-0 rounded-xl bg-fl-acc px-3 text-sm font-bold text-fl-on-acc">{restLeft === 0 ? 'Close' : 'Skip'}</button>
           </div>
-          {restLeft > 0 && <>
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-fl-s1" aria-hidden="true">
-              <div className="h-full rounded-full bg-fl-acc transition-[width] duration-1000 ease-linear" style={{ width: `${Math.min(100, (restLeft / Math.max(1, rest.total)) * 100)}%` }} />
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <button onClick={togglePause} aria-pressed={rest.paused !== undefined} className="h-10 rounded-xl border border-fl-field text-sm">{rest.paused !== undefined ? 'Resume' : 'Pause'}</button>
-              <button onClick={() => adjustRest(-15)} aria-label="15 seconds less rest" className="h-10 rounded-xl border border-fl-field text-sm">-15s</button>
-              <button onClick={() => adjustRest(15)} aria-label="15 seconds more rest" className="h-10 rounded-xl border border-fl-field text-sm">+15s</button>
-            </div>
-          </>}
         </div>
       )}
     </main>

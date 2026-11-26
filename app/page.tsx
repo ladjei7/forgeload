@@ -40,6 +40,7 @@ export default function HomePage() {
   const [error, setError] = useState('');
   const [email, setEmail] = useState('');
   const [reloadKey, setReloadKey] = useState(0); // bumped after answering a schedule prompt
+  const [showAllEx, setShowAllEx] = useState(false); // Up next shows 3 exercises until expanded
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: s }) => setEmail(s.session?.user.email ?? ''));
@@ -198,8 +199,11 @@ export default function HomePage() {
                   return [when, data.next.minutes ? `about ${data.next.minutes} min` : ''].filter(Boolean).join(' · ');
                 })()}
               </p>
-              <ul className="mb-4 divide-y divide-fl-line">
-                {data.next.exercises.slice(0, 6).map(e => (
+              {/* Start sits right under the title: no scrolling past the list to begin. */}
+              <Link href="/log" className={primary}>{data.sched?.pick.why === 'rest' ? 'Train anyway' : 'Start workout'}</Link>
+              <p className="mt-2 text-center text-xs text-fl-tx2">You can pick a different workout on the next screen.</p>
+              <ul id="up-next-list" className="mt-3 divide-y divide-fl-line">
+                {data.next.exercises.slice(0, showAllEx ? undefined : 3).map(e => (
                   <li key={e.name} className="flex items-baseline justify-between gap-3 py-2.5">
                     <div className="min-w-0">
                       <div className="font-semibold leading-snug">{e.name}</div>
@@ -218,14 +222,16 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              {data.next.exercises.length > 6 && <p className="-mt-2 mb-4 text-xs text-fl-tx2">+ {data.next.exercises.length - 6} more</p>}
+              {data.next.exercises.length > 3 && (
+                <button onClick={() => setShowAllEx(v => !v)} aria-expanded={showAllEx} aria-controls="up-next-list" className="h-11 w-full text-sm font-semibold text-fl-tx2 underline-offset-4 hover:underline">
+                  {showAllEx ? 'Show fewer' : `Show all ${data.next.exercises.length} exercises`}
+                </button>
+              )}
               {data.total === 0 && (
-                <p className="mb-4 rounded-xl bg-fl-s2 p-3 text-sm leading-relaxed text-fl-tx2">
+                <p className="mt-2 rounded-xl bg-fl-s2 p-3 text-sm leading-relaxed text-fl-tx2">
                   First time through: pick a weight you can lift for the rep range with a rep or two left in the tank. Forgeload remembers it, then shows what you did last time and a target next time.
                 </p>
               )}
-              <Link href="/log" className={primary}>{data.sched?.pick.why === 'rest' ? 'Train anyway' : 'Start workout'}</Link>
-              <p className="mt-3 text-center text-xs text-fl-tx2">You can pick a different workout on the next screen.</p>
             </section>
             </>
           ) : null}
