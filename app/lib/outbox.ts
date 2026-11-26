@@ -11,7 +11,7 @@ export type LogPayload = {
   id: string; workout_session_id: string; exercise_name: string; exercise_id: string | null;
   target_sets: number; target_rep_min: number; target_rep_max: number;
 };
-export type SetPayload = { id: string; exercise_log_id: string; set_number: number; reps: number; weight: number; completed: true; rir?: number | null };
+export type SetPayload = { id: string; exercise_log_id: string; set_number: number; reps: number; weight: number; completed: true; rir?: number | null; set_type?: 'working' | 'warmup' | 'drop' };
 export type Effort = 'easy' | 'manageable' | 'very_hard' | 'unsure';
 
 type Base = { opId: string; sessionId: string; at: number; failed?: string };

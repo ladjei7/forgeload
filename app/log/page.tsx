@@ -7,7 +7,10 @@ import { Icon } from '../components/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
-import { suggestTarget, defaultRestSeconds, workingWeight, latestForTarget, type PrevSet } from '../lib/progression';
+import { latestForTarget, type PrevSet } from '../lib/progression';
+import { recommend, buildProfile, headline, stepText, type Recommendation, type ExerciseSettings, type PastSession } from '../lib/engine';
+import { toSessions, exerciseKey, type DbLog } from '../lib/engine/fromDb';
+import { resolveEntry, type Entry } from '../lib/setEntry';
 import { DELOAD_UNTIL_KEY, DELOAD_HINT, deloadByDefault, weekEnd } from '../lib/deload';
 import { savePrefs } from '../lib/prefs';
 import { scheduleRestAlert, cancelRestAlert, beepOn, beep, unlockAudio, deviceRegistered, restAlertsOn } from '../lib/push';
@@ -18,14 +21,15 @@ import { loadScheduleState } from '../lib/scheduleData';
 import { pickCurrent, setCurrentPlan } from '../lib/currentPlan';
 import { localDateString } from '../lib/dates';
 import { newId, overlay, forSession, type Op, type Effort } from '../lib/outbox';
-import { getUnit, show, toLb, stepFor, longName, loadable, label as unitLabel, type Unit } from '../lib/units';
+import { getUnit, show, toLb, stepFor, longName, label as unitLabel, type Unit } from '../lib/units';
 import { ensureInit, getState, subscribe, addOp, dropSession, syncNow } from '../lib/outboxSync';
 
 type Plan = { id: string; name: string; is_active?: boolean | null };
 type Day = { id: string; day_name: string; sort_order: number };
 type PlanEx = { id: string; exercise_name: string; exercise_id: string | null; target_sets: number; rep_min: number; rep_max: number };
 // state: 'local' = stored on this device, not yet confirmed by the server; 'failed' = the server rejected it; undefined = saved to the account.
-type SetRow = { weight: string; reps: string; done: boolean; setId?: string; state?: 'local' | 'failed'; rir?: string };
+type SetRow = { weight: string; reps: string; done: boolean; setId?: string; state?: 'local' | 'failed'; rir?: string; kind?: 'warmup' | 'drop' };
+const KINDS: { id: '' | 'warmup' | 'drop'; label: string }[] = [{ id: '', label: 'Working' }, { id: 'warmup', label: 'Warm-up' }, { id: 'drop', label: 'Drop set' }];
 /** RIR box: blank means not recorded; anything else is clamped to 0-10. */
 const rirValue = (v?: string) => { if (!v) return null; const n = parseInt(v, 10); return Number.isFinite(n) ? Math.min(10, Math.max(0, n)) : null; };
 const EFFORTS: { id: Effort; title: string; sub: string }[] = [
@@ -47,7 +51,8 @@ type HistRow = {
   exercise_name: string;
   exercise_id: string | null;
   workout_sessions: { completed_at: string; is_deload?: boolean | null } | { completed_at: string; is_deload?: boolean | null }[] | null;
-  exercise_sets: { set_number: number; reps: number; weight: number }[] | null;
+  exercise_sets: { set_number: number; reps: number; weight: number; set_type?: string | null; skipped?: boolean | null; rir?: number | null }[] | null;
+  target_sets?: number | null; target_rep_min?: number | null; target_rep_max?: number | null;
 };
 
 const LS = { plan: 'fl-plan', rest: 'fl-rest', draft: (id: string) => `fl-draft-${id}`, swaps: (id: string) => `fl-swaps-${id}` };
@@ -75,7 +80,10 @@ export default function LogPage() {
   const [suggestedDayId, setSuggestedDayId] = useState('');
   const [emptyDays, setEmptyDays] = useState<string[]>([]);
   const [exercises, setExercises] = useState<PlanEx[]>([]);
-  const [meta, setMeta] = useState<Record<string, { tracking: string; load: string; howto: HowToInfo }>>({});
+  const [meta, setMeta] = useState<Record<string, { tracking: string; load: string; equipment: string | null; mechanic: string | null; unilateral: boolean; howto: HowToInfo }>>({});
+  const [history, setHistory] = useState<Record<string, PastSession[]>>({}); // by plan exercise name, for the progression engine
+  const [exSettings, setExSettings] = useState<Record<string, ExerciseSettings>>({}); // by exercise key
+  const [settingsOpen, setSettingsOpen] = useState<Record<string, { step: string; rest: string; note?: string } | undefined>>({});
   const [prev, setPrev] = useState<Record<string, Prev>>({});
   // Best set ever per exercise (strength estimate, so more reps at the same weight counts too).
   const [bestSet, setBestSet] = useState<Record<string, { weight: number; reps: number; score: number }>>({});
@@ -112,6 +120,9 @@ export default function LogPage() {
 
   const logIds = useRef<Record<string, string>>({});
   const lastTap = useRef<Record<string, number>>({});
+  const [confirmKey, setConfirmKey] = useState<string | null>(null); // a set waiting for "yes, I hit the target"
+  const [whyOpen, setWhyOpen] = useState<Record<string, boolean>>({}); // "Why?" details per exercise
+  const [openDone, setOpenDone] = useState<Record<string, boolean>>({}); // finished exercises the person unfolded
   const rowsRef = useRef(rows);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
 
@@ -146,12 +157,21 @@ export default function LogPage() {
     // How each exercise is logged (bodyweight, per-hand weights). Missing info = normal weight x reps.
     const metaIds = list.map(e => e.exercise_id).filter(Boolean) as string[];
     if (metaIds.length) {
-      const { data: mdata } = await supabase.from('exercises').select('id, tracking_type, load_convention, instructions, muscle_group, equipment').in('id', metaIds);
-      const m: Record<string, { tracking: string; load: string; howto: HowToInfo }> = {};
-      for (const r of (mdata ?? []) as { id: string; tracking_type: string; load_convention: string; instructions: string | null; muscle_group: string | null; equipment: string | null }[])
-        m[r.id] = { tracking: r.tracking_type, load: r.load_convention, howto: { instructions: r.instructions, muscle: r.muscle_group, equipment: r.equipment } };
+      const { data: mdata } = await supabase.from('exercises').select('id, tracking_type, load_convention, instructions, muscle_group, equipment, mechanic, is_unilateral').in('id', metaIds);
+      const m: Record<string, { tracking: string; load: string; equipment: string | null; mechanic: string | null; unilateral: boolean; howto: HowToInfo }> = {};
+      for (const r of (mdata ?? []) as { id: string; tracking_type: string; load_convention: string; instructions: string | null; muscle_group: string | null; equipment: string | null; mechanic: string | null; is_unilateral: boolean | null }[])
+        m[r.id] = { tracking: r.tracking_type, load: r.load_convention, equipment: r.equipment, mechanic: r.mechanic, unilateral: !!r.is_unilateral, howto: { instructions: r.instructions, muscle: r.muscle_group, equipment: r.equipment } };
       setMeta(m);
     } else setMeta({});
+
+    // This person's own step and rest per exercise. Optional: if the table isn't there yet, defaults apply.
+    try {
+      const keys = list.map(exerciseKey);
+      const { data: st, error: stErr } = keys.length ? await supabase.from('exercise_settings').select('exercise_key, weight_step_lb, rest_seconds').in('exercise_key', keys) : { data: [], error: null };
+      const out: Record<string, ExerciseSettings> = {};
+      if (!stErr) for (const r of (st ?? []) as { exercise_key: string; weight_step_lb: number | null; rest_seconds: number | null }[]) out[r.exercise_key] = { weightStepLb: r.weight_step_lb == null ? null : Number(r.weight_step_lb), restSeconds: r.rest_seconds };
+      setExSettings(out);
+    } catch { setExSettings({}); }
 
     // History for these exercises, from COMPLETED sessions only.
     const prevMap: Record<string, Prev> = {};
@@ -163,22 +183,25 @@ export default function LogPage() {
       const ids = list.map(e => e.exercise_id).filter(Boolean).join(',');
       const { data: hist } = await supabase
         .from('exercise_logs')
-        .select('exercise_name, exercise_id, workout_sessions!inner(completed_at, is_deload), exercise_sets(set_number, reps, weight)')
+        .select('exercise_name, exercise_id, target_sets, target_rep_min, target_rep_max, workout_sessions!inner(id, completed_at, is_deload), exercise_sets(set_number, reps, weight, set_type, skipped, rir)')
         .or(ids ? `exercise_name.in.(${quoted}),exercise_id.in.(${ids})` : `exercise_name.in.(${quoted})`)
         .not('workout_sessions.completed_at', 'is', null)
         .limit(1000);
       const planById = new Map(list.filter(e => e.exercise_id).map(e => [e.exercise_id as string, e.exercise_name]));
       const planByName = new Map(list.map(e => [e.exercise_name.trim().toLowerCase(), e.exercise_name]));
       const byName: Record<string, { at: string; is_deload: boolean; sets: HistRow['exercise_sets'] }[]> = {};
+      const logsByName: Record<string, DbLog[]> = {};
       for (const r of (hist ?? []) as unknown as HistRow[]) {
         const key = (r.exercise_id && planById.get(r.exercise_id)) || planByName.get(r.exercise_name.trim().toLowerCase());
         if (!key) continue;
         const sess = one(r.workout_sessions);
         const at = sess?.completed_at ?? '';
         const isDeload = !!sess?.is_deload;
-        (byName[key] ??= []).push({ at, is_deload: isDeload, sets: r.exercise_sets });
+        // "Previous" lines up with today's working sets: warm-ups, drop sets and skipped sets are left out.
+        (byName[key] ??= []).push({ at, is_deload: isDeload, sets: (r.exercise_sets ?? []).filter(s => !s.skipped && s.set_type !== 'warmup' && s.set_type !== 'drop') });
+        (logsByName[key] ??= []).push(r as unknown as DbLog);
         if (isDeload) continue; // a deload never sets the best to beat
-        for (const s of r.exercise_sets ?? []) if (s.reps > 0) {
+        for (const s of r.exercise_sets ?? []) if (s.reps > 0 && !s.skipped && s.set_type !== 'warmup' && s.set_type !== 'drop') {
           const w = show(s.weight, getUnit());
           const score = w > 0 ? strength(w, s.reps) : s.reps;
           if (!bestSets[key] || score > bestSets[key].score) bestSets[key] = { weight: w, reps: s.reps, score };
@@ -189,19 +212,20 @@ export default function LogPage() {
         const latest = latestForTarget(entries);
         if (latest) prevMap[name] = { sets: [...(latest.sets ?? [])].sort((a, b) => a.set_number - b.set_number).map(s => ({ reps: s.reps, weight: show(s.weight, getUnit()) })) };
       }
-    }
+      setHistory(Object.fromEntries(Object.entries(logsByName).map(([k, v]) => [k, toSessions(v, getUnit())])));
+    } else setHistory({});
     setPrev(prevMap);
     setBestSet(bestSets);
 
     // Rows: empty rows for the plan, filled in from any sets already saved in this session.
-    const saved: Record<string, Record<number, { id: string; reps: number; weight: number; rir: number | null }>> = {};
+    const saved: Record<string, Record<number, { id: string; reps: number; weight: number; rir: number | null; set_type?: string | null }>> = {};
     const eff: Record<string, Effort | null> = {};
     logIds.current = {};
     if (activeSession) {
       const { data: logs } = await supabase
-        .from('exercise_logs').select('id, exercise_name, effort, exercise_sets(id, set_number, reps, weight, rir)')
+        .from('exercise_logs').select('id, exercise_name, effort, exercise_sets(id, set_number, reps, weight, rir, set_type)')
         .eq('workout_session_id', activeSession.id);
-      for (const l of (logs ?? []) as unknown as { id: string; exercise_name: string; effort: Effort | null; exercise_sets: { id: string; set_number: number; reps: number; weight: number; rir: number | null }[] | null }[]) {
+      for (const l of (logs ?? []) as unknown as { id: string; exercise_name: string; effort: Effort | null; exercise_sets: { id: string; set_number: number; reps: number; weight: number; rir: number | null; set_type?: string | null }[] | null }[]) {
         logIds.current[l.exercise_name] = l.id;
         if (l.effort) eff[l.exercise_name] = l.effort;
         saved[l.exercise_name] = {};
@@ -216,7 +240,7 @@ export default function LogPage() {
       const count = Math.max(ex.target_sets, ...Object.keys(have).map(Number), 0);
       next[ex.id] = Array.from({ length: count }, (_, i) => {
         const s = have[i + 1];
-        if (s) return { weight: String(show(s.weight, getUnit())), reps: String(s.reps), done: true, setId: s.id, rir: s.rir != null ? String(s.rir) : '' };
+        if (s) return { weight: String(show(s.weight, getUnit())), reps: String(s.reps), done: true, setId: s.id, rir: s.rir != null ? String(s.rir) : '', ...(s.set_type === 'warmup' || s.set_type === 'drop' ? { kind: s.set_type } : {}) };
         const d = drafts[ex.id]?.[i];
         return { weight: d?.weight ?? '', reps: d?.reps ?? '', done: false };
       });
@@ -230,7 +254,7 @@ export default function LogPage() {
       for (const p of o.sets) {
         const list = next[p.peId]; if (!list) continue;
         while (list.length <= p.idx) list.push({ weight: '', reps: '', done: false });
-        list[p.idx] = { weight: String(show(p.payload.weight, getUnit())), reps: String(p.payload.reps), done: true, setId: p.payload.id, state: p.failed ? 'failed' : 'local', rir: p.payload.rir != null ? String(p.payload.rir) : '' };
+        list[p.idx] = { weight: String(show(p.payload.weight, getUnit())), reps: String(p.payload.reps), done: true, setId: p.payload.id, state: p.failed ? 'failed' : 'local', rir: p.payload.rir != null ? String(p.payload.rir) : '', ...(p.payload.set_type === 'warmup' || p.payload.set_type === 'drop' ? { kind: p.payload.set_type } : {}) };
       }
       // Effort answers still waiting to sync.
       const nameById = Object.fromEntries(Object.entries({ ...logIds.current, ...o.logIds }).map(([n, id]) => [id, n]));
@@ -380,16 +404,16 @@ export default function LogPage() {
 
   // ---------- derived ----------
 
+  // Progression engine: one target per exercise (never throws; see app/lib/engine).
+  const profiles = useMemo(() => Object.fromEntries(exercises.map(ex => {
+    const m = ex.exercise_id ? meta[ex.exercise_id] : undefined;
+    return [ex.id, buildProfile(m ? { tracking: m.tracking, equipment: m.equipment, load: m.load, mechanic: m.mechanic } : null, unit, exSettings[exerciseKey(ex)])];
+  })), [exercises, meta, unit, exSettings]);
   const targets = useMemo(() => {
-    const t: Record<string, ReturnType<typeof suggestTarget>> = {};
-    for (const ex of exercises) {
-      const ps = prev[ex.exercise_name]?.sets ?? [];
-      const x = suggestTarget(ps, ex.rep_min, ex.rep_max, stepFor(unit));
-      const top = ps.length ? workingWeight(ps) : 0;
-      t[ex.id] = x.weight === null ? x : { ...x, weight: loadable(x.weight, unit, x.action === 'add_weight' ? top : undefined) };
-    }
+    const t: Record<string, Recommendation> = {};
+    for (const ex of exercises) t[ex.id] = recommend(history[ex.exercise_name] ?? [], { sets: ex.target_sets, repMin: ex.rep_min, repMax: ex.rep_max }, profiles[ex.id]);
     return t;
-  }, [exercises, prev, unit]);
+  }, [exercises, history, profiles]);
 
   const restLeft = rest ? (rest.paused ?? Math.max(0, Math.ceil((rest.end - now) / 1000))) : 0;
   const elapsed = session ? Math.max(0, Math.floor((now - Date.parse(session.started_at)) / 1000)) : 0;
@@ -399,6 +423,34 @@ export default function LogPage() {
 
   // ---------- actions ----------
 
+  /** After a set, keep the next one on screen above the rest timer: the next row, or the next exercise's first row. */
+  function bringNextIntoView(ex: PlanEx, i: number) {
+    const rs = rowsRef.current[ex.id] ?? [];
+    const nextHere = rs.findIndex((r, k) => k > i && !r.done);
+    const idx = exercises.findIndex(e => e.id === ex.id);
+    const nextEx = nextHere >= 0 ? null : exercises.slice(idx + 1).find(e => (rowsRef.current[e.id] ?? []).some(r => !r.done));
+    const id = focus ? 'focus-entry' : nextHere >= 0 ? `set-${ex.id}-${nextHere}` : nextEx ? `set-${nextEx.id}-${(rowsRef.current[nextEx.id] ?? []).findIndex(r => !r.done)}` : '';
+    if (!id) return;
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 120);
+  }
+  /** "Use 185 lb today": fills the sets not done yet with the lighter option. Nothing is saved until a set is logged. */
+  function applyAlternative(ex: PlanEx) {
+    const alt = targets[ex.id]?.alternative; if (!alt) return;
+    (rowsRef.current[ex.id] ?? []).forEach((r, i) => { if (!r.done) setRow(ex.id, i, { weight: String(alt.weight), reps: String(alt.repsBySet.at(i) ?? alt.repsBySet.at(-1) ?? '') }); });
+  }
+  /** Saves this person's weight step and rest for one exercise (exercise_settings). */
+  async function saveExSettings(ex: PlanEx) {
+    const so = settingsOpen[ex.id]; if (!so) return;
+    const step = so.step === '' ? null : parseFloat(so.step), rest = so.rest === '' ? null : parseInt(so.rest, 10);
+    if (step !== null && (!Number.isFinite(step) || step <= 0 || step > (unit === 'kg' ? 45 : 100))) { setSettingsOpen(o => ({ ...o, [ex.id]: { ...so, note: 'Enter a step above 0.' } })); return; }
+    if (rest !== null && (!Number.isFinite(rest) || rest < 15 || rest > 900)) { setSettingsOpen(o => ({ ...o, [ex.id]: { ...so, note: 'Rest must be between 15 and 900 seconds.' } })); return; }
+    const key = exerciseKey(ex);
+    const row = { exercise_key: key, weight_step_lb: step === null ? null : toLb(step, unit), rest_seconds: rest, updated_at: new Date().toISOString() };
+    const { error } = await supabase.from('exercise_settings').upsert(row, { onConflict: 'user_id,exercise_key' });
+    if (error) { setSettingsOpen(o => ({ ...o, [ex.id]: { ...so, note: 'Could not save that. Check your connection and try again.' } })); return; }
+    setExSettings(m => ({ ...m, [key]: { weightStepLb: row.weight_step_lb, restSeconds: rest } }));
+    setSettingsOpen(o => ({ ...o, [ex.id]: undefined }));
+  }
   function startRest(seconds: number) {
     const r = { end: clockNow() + seconds * 1000, total: seconds };
     setNow(clockNow()); setRest(r); lsSet(LS.rest, JSON.stringify(r));
@@ -413,7 +465,12 @@ export default function LogPage() {
     const r: Rest = rest.paused !== undefined ? { end: Date.now() + rest.paused * 1000, total: rest.total } : { ...rest, paused: restLeft };
     setNow(Date.now()); setRest(r); lsSet(LS.rest, JSON.stringify(r));
   }
-  function toggleFocus() { setFocus(f => { lsSet('fl-log-mode', f ? 'standard' : 'focus'); return !f; }); setFocusId(''); }
+  function toggleFocus() {
+    const turningOn = !focus;
+    setFocus(f => { lsSet('fl-log-mode', f ? 'standard' : 'focus'); return !f; }); setFocusId('');
+    // Land on the set entry, not wherever the list happened to be scrolled.
+    if (turningOn && session) setTimeout(() => document.getElementById('focus-entry')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 150);
+  }
   function stopRest() { setRest(null); lsSet(LS.rest, null); }
 
   async function changePlan(pid: string) {
@@ -500,7 +557,18 @@ export default function LogPage() {
     setRows(r => ({ ...r, [exId]: r[exId].map((row, idx) => (idx === i ? { ...row, ...patch } : row)) }));
   }
 
-  async function toggleSet(ex: PlanEx, i: number) {
+  /** What this set would be logged as. Numbers not typed come from today's target (or last time) and count as suggestions. */
+  function entryFor(ex: PlanEx, i: number, row: SetRow): Entry {
+    const t = targets[ex.id];
+    const p = prev[ex.exercise_name]?.sets[i] ?? prev[ex.exercise_name]?.sets.at(-1);
+    const tReps = t?.repsBySet?.at(i) ?? t?.repsBySet?.at(-1);
+    return resolveEntry({ typedWeight: row.weight, typedReps: row.reps, targetWeight: t?.weight ?? null, targetReps: tReps ?? null,
+      prevWeight: t?.weight == null ? p?.weight ?? null : null, prevReps: t?.action === 'review' ? p?.reps ?? null : null, emptyWeightIsZero: profiles[ex.id]?.load !== 'external' });
+  }
+  const entryText = (ex: PlanEx, e: Entry) => !e.ok ? '' : `${e.weight === 0 && profiles[ex.id]?.load !== 'external' ? 'Bodyweight' : `${e.weight} ${unitLabel(unit)}`} × ${e.reps}${profiles[ex.id]?.measure === 'seconds' ? 's' : ''}`;
+
+  /** `confirmed`: the tap itself named the numbers ("Hit target: 100 lb × 10"), so suggestions may be saved. */
+  async function toggleSet(ex: PlanEx, i: number, confirmed = false) {
     unlockAudio(); // a tap: lets the rest-end beep play later
     if (!session) return;
     const key = `${ex.id}:${i}`;
@@ -516,25 +584,25 @@ export default function LogPage() {
       void syncNow();
       return;
     }
-    // Fast path: an empty box means "use the suggested number".
+    // A suggested number is saved only after an explicit "yes": a target is never silently recorded as performance.
     const t = targets[ex.id];
-    const p = prev[ex.exercise_name]?.sets[i] ?? prev[ex.exercise_name]?.sets.at(-1);
-    const weightStr = row.weight !== '' ? row.weight : t.weight !== null ? String(t.weight) : p ? String(p.weight) : '';
-    const repsStr = row.reps !== '' ? row.reps : t.reps !== null ? String(t.reps) : '';
-    const isBw = meta[ex.exercise_id ?? '']?.tracking === 'bodyweight_reps';
-    const weight = isBw && weightStr === '' ? 0 : parseFloat(weightStr), reps = parseInt(repsStr, 10);
-    if (!Number.isFinite(weight) || !Number.isFinite(reps) || reps <= 0) {
-      setRowError({ key, text: `Enter the weight${repsStr === '' ? ' and reps' : ''} for set ${i + 1} first.` });
+    const e = entryFor(ex, i, row);
+    if (!e.ok) {
+      setRowError({ key, text: `Enter the ${e.missing.join(' and ')} for set ${i + 1} first.` });
       return;
     }
+    if (e.suggested && !confirmed && confirmKey !== key) { setConfirmKey(key); return; }
+    setConfirmKey(null);
+    const { weight, reps } = e;
     // Stored on the device first (survives refresh and app close), then synced. Shown as saved to
     // the account only after the server confirms.
     const logId = logIdFor(ex);
     const setId = row.setId ?? newId();
     addOp({ opId: newId(), kind: 'set', sessionId: session.id, at: t0, peId: ex.id, idx: i,
-      payload: { id: setId, exercise_log_id: logId, set_number: i + 1, reps, weight: toLb(weight, unit), completed: true, ...(trackRir ? { rir: rirValue(row.rir) } : {}) } });
+      payload: { id: setId, exercise_log_id: logId, set_number: i + 1, reps, weight: toLb(weight, unit), completed: true, set_type: row.kind ?? 'working', ...(trackRir ? { rir: rirValue(row.rir) } : {}) } });
     setRow(ex.id, i, { weight: String(weight), reps: String(reps), done: true, setId, state: 'local' });
-    startRest(defaultRestSeconds(ex.rep_max));
+    startRest(t.restSeconds);
+    bringNextIntoView(ex, i);
     void syncNow();
   }
 
@@ -630,7 +698,8 @@ export default function LogPage() {
   const currentEx = session ? exercises.find(e => (rows[e.id] ?? []).some(r => !r.done))?.id : undefined;
 
   const card = 'rounded-2xl bg-fl-s1 border border-fl-line p-4';
-  const inputCls = 'h-14 w-full min-w-0 rounded-xl border border-fl-field bg-fl-bg text-center text-2xl font-semibold tabular-nums text-fl-tx outline-none placeholder:text-fl-tx2 focus:border-fl-acc focus-visible:ring-2 focus-visible:ring-fl-acc/50 disabled:opacity-60';
+  // Typed numbers: bright and semi-bold. Suggested numbers (placeholders): dimmer and regular weight, still readable.
+  const inputCls = 'h-12 w-full min-w-0 rounded-xl border border-fl-field bg-fl-bg text-center text-xl font-semibold tabular-nums text-fl-tx outline-none placeholder:font-normal placeholder:text-fl-tx2/75 focus:border-fl-acc focus-visible:ring-2 focus-visible:ring-fl-acc/50 disabled:opacity-40';
 
   /** After the first and last exercise: one optional tap about how hard it felt. Never blocks anything. */
   const effortBlock = (ex: PlanEx, rs: SetRow[]) => {
@@ -668,7 +737,7 @@ export default function LogPage() {
     ) : null;
     if (rs[1].done) return null;
     const w = parseFloat(rs[0].weight) || 0;
-    const step = stepFor(unit);
+    const step = profiles[ex.id]?.step ?? stepFor(unit);
     const delta = Math.max(step, Math.round((w * 0.1) / step) * step);
     const pick = (feel: 'light' | 'right' | 'heavy') => {
       const nw = Math.round((feel === 'light' ? w + delta : feel === 'heavy' ? Math.max(0, w - delta) : w) * 10) / 10;
@@ -736,6 +805,10 @@ export default function LogPage() {
     );
   }
 
+  const deloadChip = (
+    <button role="switch" aria-checked={deload} aria-label="Deload workout" onClick={() => toggleDeload(!deload)}
+      className={`h-9 rounded-full px-3 text-xs font-semibold ${deload ? 'bg-fl-acc text-fl-on-acc' : 'border border-fl-field text-fl-tx'}`}>{deload ? 'Deload on' : 'Deload'}</button>
+  );
   return (
     <main className={`mx-auto max-w-xl px-4 pt-4 text-fl-tx ${rest ? 'pb-64' : 'pb-44'}`}>
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -751,7 +824,10 @@ export default function LogPage() {
         <div className="mb-4" role="progressbar" aria-label="Sets logged" aria-valuemin={0} aria-valuemax={totalSets} aria-valuenow={doneSets}>
           <div className="mb-1 flex items-center justify-between text-xs text-fl-tx2">
             <span>{doneSets} of {totalSets} sets logged</span>
-            <button onClick={toggleFocus} aria-pressed={focus} className={`h-9 rounded-full px-3 text-xs font-semibold ${focus ? 'bg-fl-tx text-fl-bg' : 'border border-fl-field text-fl-tx'}`}>{focus ? 'Focus mode on' : 'Focus mode'}</button>
+            <span className="flex gap-2">
+              {deloadChip}
+              <button onClick={toggleFocus} aria-pressed={focus} className={`h-9 rounded-full px-3 text-xs font-semibold ${focus ? 'bg-fl-tx text-fl-bg' : 'border border-fl-field text-fl-tx'}`}>{focus ? 'Focus mode on' : 'Focus mode'}</button>
+            </span>
           </div>
           <div className="flex gap-[3px]">{Array.from({ length: totalSets }, (_, i) => <i key={i} className={`h-1 flex-1 rounded-sm ${i < doneSets ? 'bg-fl-ok' : 'bg-fl-s2'}`} />)}</div>
           {(() => {
@@ -770,21 +846,14 @@ export default function LogPage() {
 
       {error && <div role="alert" className="mb-4 rounded-xl bg-fl-s2 p-3 text-sm text-fl-bad">{error}</div>}
 
-      {exercises.length > 0 && (
-        <div className={`mb-4 rounded-2xl border p-3 text-sm ${deload ? 'border-fl-acc/60 bg-fl-tint' : 'border-fl-line'}`}>
-          <label className="flex items-center justify-between gap-3">
-            <span className="font-semibold">Deload workout</span>
-            <input type="checkbox" role="switch" aria-checked={deload} checked={deload} onChange={e => toggleDeload(e.target.checked)} className="h-5 w-5 accent-[var(--fl-acc)]" />
+      {!session && exercises.length > 0 && <div className="mb-3 flex justify-end">{deloadChip}</div>}
+      {exercises.length > 0 && deload && (
+        <div className="mb-3 rounded-2xl border border-fl-acc/60 bg-fl-tint p-3 text-sm">
+          <p className="text-xs leading-relaxed text-fl-tx2">{DELOAD_HINT}</p>
+          <label className="mt-2 flex min-h-9 items-center justify-between gap-3 text-xs">
+            <span>Also the rest of this week (through Sunday)</span>
+            <input type="checkbox" checked={deloadWeek} onChange={e => toggleDeloadWeek(e.target.checked)} className="h-5 w-5 accent-[var(--fl-acc)]" />
           </label>
-          {deload && (
-            <>
-              <p className="mt-1 text-xs leading-relaxed text-fl-tx2">{DELOAD_HINT}</p>
-              <label className="mt-2 flex items-center justify-between gap-3 text-xs">
-                <span>Also the rest of this week (through Sunday)</span>
-                <input type="checkbox" checked={deloadWeek} onChange={e => toggleDeloadWeek(e.target.checked)} className="h-4 w-4 accent-[var(--fl-acc)]" />
-              </label>
-            </>
-          )}
         </div>
       )}
 
@@ -836,19 +905,38 @@ export default function LogPage() {
         const p = prev[ex.exercise_name];
         const rs = rows[ex.id] ?? [];
         const m = meta[ex.exercise_id ?? ''];
-        const bw = m?.tracking === 'bodyweight_reps';
-        const added = m?.tracking === 'added_weight_reps';
-        const loadNote = m?.load === 'per_hand' ? 'Weight is per hand' : m?.load === 'per_side' ? 'Weight is per side' : '';
+        const pf = profiles[ex.id];
+        const bw = pf?.load === 'bodyweight';
+        const assisted = pf?.load === 'assisted';
+        const secs = pf?.measure === 'seconds';
+        const wLabel = `${bw ? '+' : ''}${unit === 'kg' ? 'Kg' : 'Lb'}${assisted ? ' assist' : ''}`;
+        const rLabel = secs ? 'Sec' : 'Reps';
+        const tRep = (i: number) => { const v = t.repsBySet?.at(i) ?? t.repsBySet?.at(-1); return v === undefined ? '' : String(v); };
+        const loadNote = [m?.load === 'per_side' ? 'Weight is per side' : pf?.perDumbbell ? (m?.equipment === 'Kettlebell' ? 'Weight is per kettlebell' : 'Weight is per dumbbell') : '',
+          assisted ? 'Weight is the assistance' : '', m?.unilateral ? 'Reps are per side' : ''].filter(Boolean).join(' · ');
+        const so = settingsOpen[ex.id];
+        // A finished exercise folds to one line (sets + Show) once its effort question is answered or not asked.
+        const folded = !!session && !focus && rs.length > 0 && rs.every(r => r.done && r.state !== 'failed') && (!askEffort || efforts[ex.exercise_name] !== undefined) && !openDone[ex.id];
         return (
-          <section key={ex.id} className={`${card} mb-3 ${currentEx === ex.id ? '!border-fl-field' : ''}`}>
+          <section key={ex.id} aria-label={ex.exercise_name} className={`${card} mb-3 ${currentEx === ex.id ? '!border-fl-field' : ''} ${folded ? '!py-3' : ''}`}>
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-lg font-bold">{ex.exercise_name}</h2>
-              {session && rs.length > 0 && <span className="shrink-0 text-xs text-fl-tx2">{rs.filter(r => r.done).length}/{rs.length}</span>}
+              <h2 className="min-w-0 text-lg font-bold leading-snug">{folded && <span className="mr-1 text-fl-ok" aria-hidden="true">✓</span>}{ex.exercise_name}</h2>
+              {session && rs.length > 0 && <span className="shrink-0 text-xs tabular-nums text-fl-tx2">{rs.filter(r => r.done).length}/{rs.length}</span>}
             </div>
-            <div className="text-sm text-fl-tx2">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} reps{loadNote ? ` · ${loadNote}` : ''}</div>
-            <HowTo key={ex.exercise_id ?? ex.exercise_name} name={ex.exercise_name} exerciseId={ex.exercise_id} info={ex.exercise_id ? (m?.howto ?? undefined) : null} />
+            {folded ? (
+              <div className="flex items-center justify-between gap-2 text-sm text-fl-tx2">
+                <span className="truncate tabular-nums">{rs.map(r => `${r.weight}×${r.reps}`).join(', ')}</span>
+                <button onClick={() => setOpenDone(o => ({ ...o, [ex.id]: true }))} aria-expanded="false" className="-my-1.5 h-11 min-w-11 shrink-0 px-2 text-xs font-semibold underline underline-offset-2">Show</button>
+              </div>
+            ) : <>
+            <div className="text-xs text-fl-tx2">{ex.target_sets} sets · {ex.rep_min}-{ex.rep_max} {secs ? 'seconds' : 'reps'}{loadNote ? ` · ${loadNote}` : ''}</div>
+            <div className="flex flex-wrap items-center gap-x-4">
+              <HowTo key={ex.exercise_id ?? ex.exercise_name} name={ex.exercise_name} exerciseId={ex.exercise_id} info={ex.exercise_id ? (m?.howto ?? undefined) : null} compact />
+              {session && !rs.some(r => r.done) && swapFor !== ex.id && <button onClick={() => { setSwapFor(ex.id); setSwapName(''); setSwapId(''); }} aria-label="Swap exercise" className="-my-1 h-11 min-w-11 px-2 text-sm text-fl-tx2 underline-offset-2 hover:underline">Swap</button>}
+              {session && rs.length > 0 && rs.every(r => r.done) && openDone[ex.id] && <button onClick={() => setOpenDone(o => ({ ...o, [ex.id]: false }))} className="-my-1 h-11 min-w-11 px-2 text-sm text-fl-tx2 underline-offset-2 hover:underline">Fold</button>}
+            </div>
             {readSwaps(session?.id)[ex.id] && <div className="text-xs text-fl-tx2">Swapped for today from {readSwaps(session?.id)[ex.id].fromName}</div>}
-            {session && !rs.some(r => r.done) && (swapFor === ex.id ? (
+            {session && !rs.some(r => r.done) && swapFor === ex.id && (
               <div className="mt-2 rounded-xl bg-fl-s2 p-3">
                 <div className="mb-2 text-sm text-fl-tx2">Swap {ex.exercise_name} for:</div>
                 <ExercisePicker value={swapName} onChange={setSwapName} onPick={x => setSwapId(x?.id ?? '')} />
@@ -868,18 +956,50 @@ export default function LogPage() {
                 </div>
                 <p className="mt-2 text-xs text-fl-tx2">Only today changes unless you tick the box. Your past sets stay in your history either way.</p>
               </div>
-            ) : <button onClick={() => { setSwapFor(ex.id); setSwapName(''); setSwapId(''); }} className="mt-1 h-9 text-sm text-fl-tx2 underline-offset-2 hover:underline">Swap exercise</button>)}
-            <details className="mb-3 mt-3 border-l-4 border-fl-acc pl-3">
-              <summary className="cursor-pointer list-none py-1">
-                <div className="text-[11px] uppercase tracking-wide text-fl-tx2">Target</div>
-                <div className="text-2xl font-semibold leading-tight tracking-tight">
-                  {t.action === 'start' ? (bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : 'Find your starting weight') : (bw && !t.weight ? `Bodyweight × ${t.reps}` : `${t.weight !== null ? `${t.weight} ${unitLabel(unit)}` : 'add load'} × ${t.reps}`)}
-                </div>
-                {t.action === 'start' && !bw && <span className="mb-1 block text-sm text-fl-tx2">First time: pick a weight you could lift about {ex.rep_max + 2} times with good form, and stop at {ex.rep_max}.</span>}
-                <span className="text-xs text-fl-tx2 underline">why this target?</span>
-              </summary>
-              <p className="mt-2 text-xs leading-relaxed text-fl-tx2">{t.reason}</p>
-            </details>
+            )}
+            {/* Today's target: the number and one short line; the full reasoning is one tap away. */}
+            <div className="mb-2 mt-2 border-l-4 border-fl-acc pl-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] uppercase tracking-wide text-fl-tx2">Today&apos;s target</span>
+                <button onClick={() => setWhyOpen(o => ({ ...o, [ex.id]: !o[ex.id] }))} aria-expanded={!!whyOpen[ex.id]} aria-controls={`why-${ex.id}`}
+                  className="-my-2 h-11 min-w-11 px-2 text-xs text-fl-tx2 underline underline-offset-2">{whyOpen[ex.id] ? 'Hide details' : 'Why?'}</button>
+              </div>
+              <div className="text-xl font-semibold leading-tight tracking-tight tabular-nums">
+                {t.action === 'start' ? (secs ? `Hold ${ex.rep_min}-${ex.rep_max}s` : bw ? `Bodyweight × ${ex.rep_min}-${ex.rep_max}` : 'Find your starting weight') : headline(t, unitLabel(unit))}
+              </div>
+              <p className="text-sm leading-snug text-fl-tx2">{t.short}</p>
+              {t.cautionShort && <p role="note" className="mt-0.5 text-sm font-semibold leading-snug text-fl-acc">{t.cautionShort}</p>}
+              {whyOpen[ex.id] && (
+              <div id={`why-${ex.id}`} className="mt-2 text-xs leading-relaxed text-fl-tx2">
+                <p className="mb-1 text-sm text-fl-tx">{t.reason}</p>
+                {t.caution && <p className="mb-1">{t.caution}</p>}
+                {t.details.length > 0 && <ul className="list-disc space-y-0.5 pl-4">{t.details.map((d, k) => <li key={k}>{d}</li>)}</ul>}
+                <p className="mt-1">Rest: {Math.floor(t.restSeconds / 60)}:{String(t.restSeconds % 60).padStart(2, '0')}{pf && !bw && !secs ? ` · Step: ${stepText(pf)}` : ''}. It&apos;s a suggestion: anything you type wins.</p>
+                {so ? (
+                  <div className="mt-2 rounded-xl bg-fl-s2 p-3 text-sm text-fl-tx">
+                    <p className="mb-2 font-semibold">Settings for {ex.exercise_name}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {!bw && !secs && <label className="text-xs text-fl-tx2">Weight step ({unitLabel(unit)}{pf?.perDumbbell ? ' per dumbbell' : ''})
+                        <input inputMode="decimal" value={so.step} onChange={e => setSettingsOpen(o => ({ ...o, [ex.id]: { ...so, step: clean(e.target.value), note: undefined } }))} className={`${inputCls} mt-1 !h-11`} /></label>}
+                      <label className="text-xs text-fl-tx2">Rest (seconds)
+                        <input inputMode="numeric" value={so.rest} onChange={e => setSettingsOpen(o => ({ ...o, [ex.id]: { ...so, rest: e.target.value.replace(/\D/g, '').slice(0, 3), note: undefined } }))} className={`${inputCls} mt-1 !h-11`} /></label>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={() => saveExSettings(ex)} className="h-11 flex-1 rounded-lg bg-fl-acc text-sm font-bold text-fl-on-acc">Save</button>
+                      <button onClick={() => setSettingsOpen(o => ({ ...o, [ex.id]: undefined }))} className="h-11 rounded-lg bg-fl-s1 px-3 text-sm">Cancel</button>
+                    </div>
+                    {so.note && <p role="status" className="mt-2 text-xs text-fl-tx2">{so.note}</p>}
+                  </div>
+                ) : (
+                  <button onClick={() => setSettingsOpen(o => ({ ...o, [ex.id]: { step: pf ? String(pf.step) : '', rest: String(t.restSeconds) } }))} className="mt-1 h-9 text-xs text-fl-tx2 underline underline-offset-2">Change step or rest for this exercise</button>
+                )}
+              </div>
+              )}
+            </div>
+            {t.alternative && session && !rs.every(r => r.done) && (
+              <button onClick={() => applyAlternative(ex)} className="mb-2 h-10 rounded-lg border border-fl-field px-3 text-sm font-semibold">{t.alternative.label}</button>
+            )}
+            {!session && <p className="text-sm tabular-nums text-fl-tx2">{p?.sets.length ? `Last time: ${[...new Set(p.sets.map(x => x.weight))].length === 1 ? `${p.sets[0].weight} × ${p.sets.map(x => x.reps).join(', ')}` : p.sets.map(x => `${x.weight}×${x.reps}`).join(', ')}` : 'No history yet'}</p>}
 
             {focus && session && (() => {
               const ai = rs.findIndex(x => !x.done);
@@ -891,25 +1011,25 @@ export default function LogPage() {
                     <ul className="mb-3 flex flex-wrap gap-2" aria-label="Saved sets">
                       {rs.map((x, i) => !x.done ? null : x.state === 'failed'
                         ? <li key={i}><button onClick={() => toggleSet(ex, i)} className="rounded-lg border border-fl-bad px-2.5 py-1 text-sm tabular-nums text-fl-bad">↻ Set {i + 1}: {x.weight}×{x.reps}, not saved. Retry</button></li>
-                        : <li key={i} className={`rounded-lg px-2.5 py-1 text-sm tabular-nums text-fl-ok ${x.state === 'local' ? 'border border-dashed border-fl-ok' : 'bg-fl-ok/15'}`}>{x.state === 'local' ? '◌' : '✓'} Set {i + 1}: {x.weight}×{x.reps}{x.state === 'local' ? ' (on this device)' : ''}</li>)}
+                        : <li key={i} className={`rounded-lg px-2.5 py-1 text-sm tabular-nums text-fl-ok ${x.state === 'local' ? 'border border-dashed border-fl-ok' : 'bg-fl-ok/15'}`}>{x.state === 'local' ? '◌' : '✓'} Set {i + 1}: {x.weight}×{x.reps}{x.kind === 'warmup' ? ' (warm-up)' : x.kind === 'drop' ? ' (drop)' : ''}{x.state === 'local' ? ' (on this device)' : ''}</li>)}
                     </ul>
                   )}
                   {r ? (
-                    <div>
+                    <div id="focus-entry" className="scroll-mb-[150px] scroll-mt-[60px]">
                       <div className="mb-2 flex justify-between text-sm text-fl-tx2">
                         <span>Set {ai + 1} of {rs.length}</span>
                         {pv && <button type="button" onClick={() => setRow(ex.id, ai, { weight: String(pv.weight), reps: String(pv.reps) })} className="underline decoration-dotted underline-offset-4">Last time {pv.weight}×{pv.reps}</button>}
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <label className="text-xs uppercase tracking-wide text-fl-tx2">{`${bw || added ? '+' : ''}${unit === 'kg' ? 'Kg' : 'Lb'}`}
+                        <label className="text-xs uppercase tracking-wide text-fl-tx2">{wLabel}
                           <input aria-label={`${ex.exercise_name} set ${ai + 1} weight in ${longName(unit)}`} inputMode="decimal" value={r.weight}
                             placeholder={bw && !t.weight && !pv?.weight ? 'BW' : t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
-                            onChange={e => setRow(ex.id, ai, { weight: clean(e.target.value) })} className={`${inputCls} mt-1 !h-16 !text-3xl`} />
+                            onChange={e => setRow(ex.id, ai, { weight: clean(e.target.value) })} className={`${inputCls} mt-1 !h-14 !text-3xl`} />
                         </label>
-                        <label className="text-xs uppercase tracking-wide text-fl-tx2">Reps
-                          <input aria-label={`${ex.exercise_name} set ${ai + 1} reps`} inputMode="numeric" value={r.reps}
-                            placeholder={t.reps !== null ? String(t.reps) : ''}
-                            onChange={e => setRow(ex.id, ai, { reps: e.target.value.replace(/\D/g, '') })} className={`${inputCls} mt-1 !h-16 !text-3xl`} />
+                        <label className="text-xs uppercase tracking-wide text-fl-tx2">{rLabel}
+                          <input aria-label={`${ex.exercise_name} set ${ai + 1} ${secs ? 'seconds' : 'reps'}`} inputMode="numeric" value={r.reps}
+                            placeholder={tRep(ai) || (pv && t.action === 'review' ? String(pv.reps) : '')}
+                            onChange={e => setRow(ex.id, ai, { reps: e.target.value.replace(/\D/g, '') })} className={`${inputCls} mt-1 !h-14 !text-3xl`} />
                         </label>
                       </div>
                       {trackRir && (
@@ -919,12 +1039,21 @@ export default function LogPage() {
                             onChange={e => setRow(ex.id, ai, { rir: e.target.value.replace(/\D/g, '').slice(0, 2) })} className={`${inputCls} !h-12 !w-20`} />
                         </label>
                       )}
-                      <button onClick={() => toggleSet(ex, ai)}
-                        className="mt-3 h-16 w-full rounded-2xl bg-fl-acc text-xl font-bold text-fl-on-acc">
-                        Complete set {ai + 1}
+                      {(() => { const fe = entryFor(ex, ai, r); const sug = fe.ok && fe.suggested; return (<>
+                      <button onClick={() => toggleSet(ex, ai, true)}
+                        className="mt-3 h-14 w-full rounded-2xl bg-fl-acc text-xl font-bold text-fl-on-acc">
+                        {sug ? `Hit target: ${entryText(ex, fe)}` : `Complete set ${ai + 1}`}
                       </button>
+                      <p className="mt-2 text-center text-xs text-fl-tx2">{sug ? 'Did something different? Type it first.' : 'Logs exactly what you typed.'}</p>
+                      </>); })()}
                       {rowError?.key === `${ex.id}:${ai}` && <p className="mt-2 text-center text-sm font-semibold text-fl-bad" role="alert">⚠ {rowError.text}</p>}
-                      <p className="mt-2 text-center text-xs text-fl-tx2">Empty boxes use the target.</p>
+                      <div role="group" aria-label={`Set ${ai + 1} type`} className="mt-3 flex justify-center gap-1.5">
+                        {KINDS.map(k => (
+                          <button key={k.id || 'working'} type="button" aria-pressed={(r.kind ?? '') === k.id} onClick={() => setRow(ex.id, ai, { kind: k.id || undefined })}
+                            className={`h-8 rounded-full px-3 text-xs ${(r.kind ?? '') === k.id ? 'bg-fl-tx font-semibold text-fl-bg' : 'border border-fl-field text-fl-tx2'}`}>{k.label}</button>
+                        ))}
+                      </div>
+
                     </div>
                   ) : <p className="font-semibold text-fl-ok">✓ All sets saved for this exercise.</p>}
                   {calibBlock(ex, rs, bw)}
@@ -933,21 +1062,24 @@ export default function LogPage() {
               );
             })()}
 
-            {!(focus && session) && <>
-            {trackRir && session && rirNote}
-            <div className="mb-1 grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3.25rem] gap-2 text-center text-[11px] uppercase tracking-wide text-fl-tx2">
-              <span>Set</span><span>Previous</span><span>{`${bw || added ? '+' : ''}${unit === 'kg' ? 'Kg' : 'Lb'}`}</span><span>Reps</span><span className="sr-only">Done</span>
+            {session && !focus && <>
+            {trackRir && rirNote}
+            <div className="mb-1 grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] gap-2 text-center text-[11px] uppercase tracking-wide text-fl-tx2">
+              <span>Set</span><span>Previous</span><span>{wLabel}</span><span>{rLabel}</span><span className="sr-only">Done</span>
             </div>
             {rs.map((r, i) => {
               const pv = p?.sets[i] ?? p?.sets.at(-1);
+              const active = currentEx === ex.id && i === rs.findIndex(x => !x.done); // the next set to log
               return (
-                <div key={i} className="mb-2">
-                <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3.25rem] items-center gap-2">
-                  <span className={`flex h-9 w-9 items-center justify-center rounded-[10px] text-sm font-bold ${r.done ? 'bg-fl-ok text-fl-on-ok' : r.state === 'failed' ? 'border-2 border-fl-bad text-fl-bad' : currentEx === ex.id && i === rs.findIndex(x => !x.done) ? 'border-2 border-fl-acc text-fl-acc' : 'border border-fl-field text-fl-tx2'}`}>{i + 1}</span>
+                <div key={i} id={`set-${ex.id}-${i}`} className="mb-1.5 scroll-mb-[190px] scroll-mt-[90px]">
+                <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem] items-center gap-2">
+                  <button type="button" disabled={!session || r.done} onClick={() => setRow(ex.id, i, { kind: r.kind === undefined ? 'warmup' : r.kind === 'warmup' ? 'drop' : undefined })}
+                    aria-label={`Set ${i + 1}: ${r.kind === 'warmup' ? 'warm-up' : r.kind === 'drop' ? 'drop set' : 'working set'}. Tap to change the set type`}
+                    className={`flex h-9 w-9 items-center justify-center rounded-[10px] text-sm font-bold ${r.done ? 'bg-fl-ok text-fl-on-ok' : r.state === 'failed' ? 'border-2 border-fl-bad text-fl-bad' : currentEx === ex.id && i === rs.findIndex(x => !x.done) ? 'border-2 border-fl-acc text-fl-acc' : 'border border-fl-field text-fl-tx2'}`}>{r.kind === 'warmup' ? 'W' : r.kind === 'drop' ? 'D' : i + 1}</button>
                   {pv && session && !r.done ? (
                     <button type="button" onClick={() => setRow(ex.id, i, { weight: String(pv.weight), reps: String(pv.reps) })}
                       aria-label={`Use last time: ${pv.weight} ${longName(unit)} for ${pv.reps} reps, for set ${i + 1}`}
-                      className="h-12 truncate rounded-lg text-center text-sm tabular-nums text-fl-tx2 underline decoration-dotted underline-offset-4">{pv.weight}×{pv.reps}</button>
+                      className="h-11 truncate rounded-lg text-center text-sm tabular-nums text-fl-tx2 underline decoration-dotted underline-offset-4">{pv.weight}×{pv.reps}</button>
                   ) : (
                     <span className="truncate text-center text-sm tabular-nums text-fl-tx2">{pv ? `${pv.weight}×${pv.reps}` : '-'}</span>
                   )}
@@ -956,19 +1088,19 @@ export default function LogPage() {
                     inputMode="decimal" disabled={!session} value={r.weight}
                     placeholder={bw && !t.weight && !pv?.weight ? 'BW' : t.weight !== null ? String(t.weight) : pv ? String(pv.weight) : ''}
                     onChange={e => setRow(ex.id, i, { weight: clean(e.target.value) })}
-                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : ''}`}
+                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : active ? '!border-fl-tx2 bg-fl-s1' : 'border-fl-line placeholder:!text-fl-tx2/50'}`}
                   />
                   <input
-                    aria-label={`${ex.exercise_name} set ${i + 1} reps`}
+                    aria-label={`${ex.exercise_name} set ${i + 1} ${secs ? 'seconds' : 'reps'}`}
                     inputMode="numeric" disabled={!session} value={r.reps}
-                    placeholder={t.reps !== null ? String(t.reps) : ''}
+                    placeholder={tRep(i) || (pv && t.action === 'review' ? String(pv.reps) : '')}
                     onChange={e => setRow(ex.id, i, { reps: e.target.value.replace(/\D/g, '') })}
-                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : ''}`}
+                    className={`${inputCls} ${r.done ? 'border-fl-ok/60 bg-fl-ok/10' : active ? '!border-fl-tx2 bg-fl-s1' : 'border-fl-line placeholder:!text-fl-tx2/50'}`}
                   />
                   <button
                     aria-label={r.state === 'failed' ? `Set ${i + 1} not saved to your account. Retry` : r.state === 'local' ? `Set ${i + 1} saved on this device, waiting to sync. Tap to undo` : r.done ? `Set ${i + 1} saved to your account. Tap to undo` : `Log set ${i + 1}`} aria-pressed={r.done}
                     disabled={!session} onClick={() => toggleSet(ex, i)}
-                    className={`h-14 w-[3.25rem] rounded-xl text-xl font-bold disabled:opacity-40 ${r.state === 'failed' ? 'border-2 border-fl-bad bg-fl-bad/15 text-fl-bad' : r.state === 'local' ? 'border-2 border-dashed border-fl-ok text-fl-ok' : r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'}`}
+                    className={`h-12 w-12 rounded-xl text-xl font-bold disabled:opacity-40 ${r.state === 'failed' ? 'border-2 border-fl-bad bg-fl-bad/15 text-fl-bad' : r.state === 'local' ? 'border-2 border-dashed border-fl-ok text-fl-ok' : r.done ? 'bg-fl-ok text-fl-on-ok' : 'bg-fl-s2 text-fl-tx2'}`}
                   >{r.state === 'failed' ? '↻' : r.state === 'local' ? '◌' : '✓'}</button>
                 </div>
                 {trackRir && session && (r.done
@@ -979,6 +1111,12 @@ export default function LogPage() {
                         onChange={e => setRow(ex.id, i, { rir: e.target.value.replace(/\D/g, '').slice(0, 2) })} className={`${inputCls} !h-10 !w-16`} />
                     </label>
                   ))}
+                {confirmKey === `${ex.id}:${i}` && !r.done && (() => { const ce = entryFor(ex, i, r); return ce.ok && ce.suggested ? (
+                  <div role="group" aria-label={`Confirm set ${i + 1}`} className="mt-1 flex flex-wrap items-center justify-end gap-2 text-sm">
+                    <span className="text-fl-tx2">Log the target, {entryText(ex, ce)}?</span>
+                    <button onClick={() => toggleSet(ex, i, true)} className="h-11 rounded-lg bg-fl-acc px-3 font-semibold text-fl-on-acc">Yes, I did that</button>
+                    <button onClick={() => setConfirmKey(null)} className="h-11 rounded-lg bg-fl-s2 px-3">Change</button>
+                  </div>) : null; })()}
                 {r.state === 'local' && !ob.online && <p className="mt-1 text-right text-xs text-fl-tx2" role="status">On this device. Syncs when you reconnect.</p>}
                 {r.state === 'failed' && <p className="mt-1 text-right text-xs text-fl-bad" role="alert">Not saved to your account. Tap ↻ to retry.</p>}
                 {rowError?.key === `${ex.id}:${i}` && <p className="mt-1 text-right text-sm font-semibold text-fl-bad" role="alert">⚠ {rowError.text}</p>}
@@ -994,6 +1132,7 @@ export default function LogPage() {
             )}
             {effortBlock(ex, rs)}
             </>}
+            </>}
           </section>
         );
       })}
@@ -1003,24 +1142,21 @@ export default function LogPage() {
       )}
 
       {rest && (
-        <div role="timer" aria-live="off" className="fixed inset-x-0 bottom-[78px] z-50 mx-auto max-w-xl rounded-2xl border border-fl-line bg-fl-s2 px-3 pb-3 pt-2.5 shadow-lg" style={{ width: 'calc(100% - 1.5rem)' }}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-baseline gap-2">
-              <span className="text-[11px] uppercase tracking-wide text-fl-tx2">{restLeft === 0 ? 'Rest over' : rest.paused !== undefined ? 'Rest paused' : 'Rest'}</span>
-              <span className={`text-2xl font-bold tabular-nums ${restLeft === 0 ? 'text-fl-ok' : ''}`}>{mmss(restLeft)}</span>
+        <div role="timer" aria-live="off" className="fixed inset-x-0 bottom-[calc(82px+env(safe-area-inset-bottom))] z-50 mx-auto max-w-xl overflow-hidden rounded-2xl border border-fl-line bg-fl-s2 shadow-lg" style={{ width: 'calc(100% - 1.5rem)' }}>
+          {/* One compact row, so the next set stays visible above it. */}
+          {restLeft > 0 && <div className="h-1 bg-fl-s1" aria-hidden="true"><div className="h-full bg-fl-acc transition-[width] duration-1000 ease-linear" style={{ width: `${Math.min(100, (restLeft / Math.max(1, rest.total)) * 100)}%` }} /></div>}
+          <div className="flex items-center gap-1.5 px-2 py-1.5">
+            <div className="min-w-0 flex-1 pl-1 leading-none">
+              <div className="text-[10px] uppercase tracking-wide text-fl-tx2">{restLeft === 0 ? 'Rest over' : rest.paused !== undefined ? 'Paused' : 'Rest'}</div>
+              <div className={`text-2xl font-bold tabular-nums ${restLeft === 0 ? 'text-fl-ok' : ''}`}>{mmss(restLeft)}</div>
             </div>
-            <button onClick={stopRest} className="h-10 shrink-0 rounded-xl bg-fl-acc px-4 text-sm font-bold text-fl-on-acc">{restLeft === 0 ? 'Close' : 'Skip rest'}</button>
+            {restLeft > 0 && <>
+              <button onClick={() => adjustRest(-15)} aria-label="15 seconds less rest" className="h-11 w-12 rounded-xl border border-fl-field text-sm">-15</button>
+              <button onClick={() => adjustRest(15)} aria-label="15 seconds more rest" className="h-11 w-12 rounded-xl border border-fl-field text-sm">+15</button>
+              <button onClick={togglePause} aria-pressed={rest.paused !== undefined} aria-label={rest.paused !== undefined ? 'Resume rest' : 'Pause rest'} className="h-11 w-11 rounded-xl border border-fl-field text-base">{rest.paused !== undefined ? '▶' : '❚❚'}</button>
+            </>}
+            <button onClick={stopRest} aria-label={restLeft === 0 ? 'Close rest timer' : 'Skip rest'} className="h-11 shrink-0 rounded-xl bg-fl-acc px-3 text-sm font-bold text-fl-on-acc">{restLeft === 0 ? 'Close' : 'Skip'}</button>
           </div>
-          {restLeft > 0 && <>
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-fl-s1" aria-hidden="true">
-              <div className="h-full rounded-full bg-fl-acc transition-[width] duration-1000 ease-linear" style={{ width: `${Math.min(100, (restLeft / Math.max(1, rest.total)) * 100)}%` }} />
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <button onClick={togglePause} aria-pressed={rest.paused !== undefined} className="h-10 rounded-xl border border-fl-field text-sm">{rest.paused !== undefined ? 'Resume' : 'Pause'}</button>
-              <button onClick={() => adjustRest(-15)} aria-label="15 seconds less rest" className="h-10 rounded-xl border border-fl-field text-sm">-15s</button>
-              <button onClick={() => adjustRest(15)} aria-label="15 seconds more rest" className="h-10 rounded-xl border border-fl-field text-sm">+15s</button>
-            </div>
-          </>}
         </div>
       )}
     </main>
