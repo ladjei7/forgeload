@@ -11,14 +11,21 @@ self.addEventListener('push', (event) => {
     // A rest alert that arrives very late would interrupt the next set: show it quietly instead.
     // (Browsers require a visible notification for every push, so it is never silently dropped.)
     const late = p.kind === 'rest' && p.dueAt && received - p.dueAt > 20000;
+    const kind = p.kind || 'forgeload';
+    // One alert per kind: clear older ones first. iPhone ignores "tag" (WebKit bug 258922), so without
+    // this every set would leave another "Rest complete" in Notification Center. Never blocks the alert.
+    try {
+      const old = await self.registration.getNotifications();
+      for (const n of old) if (n.tag === kind || (n.data && n.data.kind === kind)) n.close();
+    } catch { /* not supported: the tag below still helps where it works */ }
     await self.registration.showNotification(p.title || 'Forgeload', {
       body: late ? 'Your rest ended a moment ago.' : (p.body || ''),
-      tag: p.kind || 'forgeload',          // a newer alert of the same kind replaces the old one: no stacks
+      tag: kind,                           // where supported, the browser also replaces same-kind alerts
       renotify: !late,
       silent: !!late,
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      data: { url: p.url || '/' },
+      data: { url: p.url || '/', kind },
     });
     // Delivery receipt, used only to measure timing during testing. Never blocks the notification.
     if (p.ack && p.ref && p.token) {
