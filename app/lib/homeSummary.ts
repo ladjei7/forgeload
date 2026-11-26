@@ -1,33 +1,46 @@
-// Pure helpers for the Home screen. No UI, no database. Nothing here invents data:
-// with no history, last performance is null and the week is empty.
-import { suggestTarget, defaultRestSeconds, workingWeight, workingSet, latestForTarget, type PrevSet, type Target } from './progression.ts';
+import { workingSet, latestForTarget, defaultRestSeconds, type PrevSet } from './progression.ts';
+import { recommend, buildProfile, type ExerciseProfile, type Recommendation } from './engine/index.ts';
+import { show, type Unit } from './units.ts';
 import { RULES } from './rules.ts';
 
-export type HistEntry = { name: string; exerciseId: string | null; at: string; is_deload?: boolean | null; sets: { set_number: number; reps: number; weight: number }[] };
+export type HistEntry = { name: string; exerciseId: string | null; at: string; is_deload?: boolean | null; sets: { set_number: number; reps: number; weight: number; set_type?: string | null; skipped?: boolean | null }[]; prescription?: { sets: number; repMin: number; repMax: number } | null };
 export type PlanExLite = { name: string; exerciseId: string | null; sets: number; repMin: number; repMax: number };
-export type ExSummary = { name: string; sets: number; repMin: number; repMax: number; last: PrevSet[] | null; lastShown: PrevSet | null; target: Target };
+export type ExSummary = { name: string; sets: number; repMin: number; repMax: number; last: PrevSet[] | null; lastShown: PrevSet | null; target: Recommendation };
+
+const mineOf = (hist: HistEntry[], ex: { name: string; exerciseId: string | null }) => {
+  const nm = ex.name.trim().toLowerCase();
+  return hist.filter(h => (ex.exerciseId && h.exerciseId === ex.exerciseId) || (!h.exerciseId && h.name.trim().toLowerCase() === nm) || (!ex.exerciseId && h.name.trim().toLowerCase() === nm));
+};
 
 /** Sets of the session next time builds on (most recent non-deload). Matches by exercise id first, then by name. */
 export function lastSets(hist: HistEntry[], ex: { name: string; exerciseId: string | null }): PrevSet[] | null {
-  const nm = ex.name.trim().toLowerCase();
-  const mine = hist
-    .filter(h => (ex.exerciseId && h.exerciseId === ex.exerciseId) || (!h.exerciseId && h.name.trim().toLowerCase() === nm) || (!ex.exerciseId && h.name.trim().toLowerCase() === nm))
-    ;
-  const latest = latestForTarget(mine);
+  const latest = latestForTarget(mineOf(hist, ex));
   if (!latest) return null;
-  return [...latest.sets].sort((a, b) => a.set_number - b.set_number).map(s => ({ reps: s.reps, weight: s.weight }));
+  return [...latest.sets].filter(s => !s.skipped && s.set_type !== 'warmup' && s.set_type !== 'drop').sort((a, b) => a.set_number - b.set_number).map(s => ({ reps: s.reps, weight: s.weight }));
 }
 
-/** `convert` turns stored pounds into the person's unit; `step` is the weight jump in that unit. */
-export function summarize(plan: PlanExLite[], hist: HistEntry[], convert: (lb: number) => number = x => x, step?: number,
-  round: (w: number, above?: number) => number = w => Math.round(w * 10) / 10): ExSummary[] {
+/**
+ * Up-next summary with the same engine as the workout screen. Weights in `hist` are stored pounds;
+ * `profileFor` gives each exercise's profile (equipment, step), defaulting to plain weight x reps.
+ */
+export function summarize(plan: PlanExLite[], hist: HistEntry[], unit: Unit = 'lb', profileFor: (p: PlanExLite) => ExerciseProfile = () => buildProfile(null, unit)): ExSummary[] {
   return plan.map(p => {
     const raw = lastSets(hist, p);
-    const last = raw ? raw.map(s => ({ ...s, weight: convert(s.weight) })) : null;
-    const t = suggestTarget(last ?? [], p.repMin, p.repMax, step);
-    const top = last?.length ? workingWeight(last) : 0;
-    return { name: p.name, sets: p.sets, repMin: p.repMin, repMax: p.repMax, last, lastShown: last ? workingSet(last) : null, target: t.weight === null ? t : { ...t, weight: round(t.weight, t.action === 'add_weight' ? top : undefined) } };
+    const last = raw ? raw.map(s => ({ ...s, weight: show(s.weight, unit) })) : null;
+    const sessions = mineOf(hist, p).map(h => ({ at: h.at, isDeload: h.is_deload, prescription: h.prescription ?? null,
+      sets: [...h.sets].sort((a, b) => a.set_number - b.set_number).map(x => ({ weight: show(x.weight, unit), reps: x.reps, kind: x.set_type ?? null, skipped: x.skipped ?? null })) }));
+    const target = recommend(sessions, { sets: p.sets, repMin: p.repMin, repMax: p.repMax }, profileFor(p));
+    return { name: p.name, sets: p.sets, repMin: p.repMin, repMax: p.repMax, last, lastShown: last ? workingSet(last) : null, target };
   });
+}
+
+/** Short target for a list: "70×9,8,8", "BW×12,12,12", "your call". */
+export function compactTarget(t: Recommendation): string {
+  const reps = t.repsBySet ? t.repsBySet.join(',') + (t.measure === 'seconds' ? 's' : '') : '';
+  if (t.action === 'review') return 'your call';
+  if (t.action === 'harder_variation') return `harder ×${reps}`;
+  if (t.weight === null) return `×${reps}`;
+  return t.weight === 0 ? `BW×${reps}` : `${t.weight}×${reps}`;
 }
 
 /** Monday 00:00 local of the week containing d. */

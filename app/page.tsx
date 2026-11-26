@@ -8,9 +8,11 @@ import { chooseNext, homePrompt, localDate, type NextPick, type HomePrompt } fro
 import { loadScheduleState } from './lib/scheduleData';
 import SchedulePrompt from './components/SchedulePrompt';
 import { pickCurrent } from './lib/pickCurrent';
-import { getUnit, show, stepFor, loadable } from './lib/units';
+import { getUnit } from './lib/units';
 import SwapSuggestionCard from './components/SwapSuggestionCard';
-import { summarize, weekDots, todayIndex, estimateMinutes, rotationPosition, type ExSummary, type HistEntry, type PlanExLite } from './lib/homeSummary';
+import { summarize, compactTarget, weekDots, todayIndex, estimateMinutes, rotationPosition, type ExSummary, type HistEntry, type PlanExLite } from './lib/homeSummary';
+import { buildProfile, type ExerciseSettings } from './lib/engine';
+import { exerciseKey } from './lib/engine/fromDb';
 
 type Recent = { id: string; dayName: string; completedAt: string; sets: number };
 type Home = {
@@ -89,13 +91,24 @@ export default function HomePage() {
               // Last performance for these exercises, from COMPLETED sessions only (same source the workout screen uses).
               const quoted = planEx.map(e => `"${e.name.replace(/"/g, '\\"')}"`).join(',');
               const exIds = planEx.map(e => e.exerciseId).filter(Boolean).join(',');
-              const { data: hist } = await supabase.from('exercise_logs')
-                .select('exercise_name, exercise_id, workout_sessions!inner(completed_at, is_deload), exercise_sets(set_number, reps, weight)')
-                .or(exIds ? `exercise_name.in.(${quoted}),exercise_id.in.(${exIds})` : `exercise_name.in.(${quoted})`)
-                .not('workout_sessions.completed_at', 'is', null).limit(500);
-              const entries: HistEntry[] = ((hist ?? []) as unknown as { exercise_name: string; exercise_id: string | null; workout_sessions: { completed_at: string; is_deload?: boolean | null } | { completed_at: string; is_deload?: boolean | null }[] | null; exercise_sets: HistEntry['sets'] | null }[])
-                .map(r => ({ name: r.exercise_name, exerciseId: r.exercise_id, at: one(r.workout_sessions)?.completed_at ?? '', is_deload: one(r.workout_sessions)?.is_deload ?? false, sets: r.exercise_sets ?? [] }));
-              h.next = { dayName: next.day_name, exercises: summarize(planEx, entries, lb => show(lb, getUnit()), stepFor(getUnit()), (w, above) => loadable(w, getUnit(), above)), pos: rotationPosition(dayList.map(d => d.id), next.id), minutes: estimateMinutes(planEx) };
+              const [{ data: hist }, { data: metaRows }, settingsRes] = await Promise.all([
+                supabase.from('exercise_logs')
+                  .select('exercise_name, exercise_id, target_sets, target_rep_min, target_rep_max, workout_sessions!inner(completed_at, is_deload), exercise_sets(set_number, reps, weight, set_type, skipped)')
+                  .or(exIds ? `exercise_name.in.(${quoted}),exercise_id.in.(${exIds})` : `exercise_name.in.(${quoted})`)
+                  .not('workout_sessions.completed_at', 'is', null).limit(500),
+                exIds ? supabase.from('exercises').select('id, tracking_type, load_convention, equipment, mechanic').in('id', exIds.split(',')) : Promise.resolve({ data: [] }),
+                supabase.from('exercise_settings').select('exercise_key, weight_step_lb, rest_seconds').in('exercise_key', planEx.map(e => exerciseKey({ exercise_id: e.exerciseId, exercise_name: e.name }))).then(r => r, () => ({ data: null })),
+              ]);
+              const entries: HistEntry[] = ((hist ?? []) as unknown as { exercise_name: string; exercise_id: string | null; target_sets: number | null; target_rep_min: number | null; target_rep_max: number | null; workout_sessions: { completed_at: string; is_deload?: boolean | null } | { completed_at: string; is_deload?: boolean | null }[] | null; exercise_sets: HistEntry['sets'] | null }[])
+                .map(r => ({ name: r.exercise_name, exerciseId: r.exercise_id, at: one(r.workout_sessions)?.completed_at ?? '', is_deload: one(r.workout_sessions)?.is_deload ?? false, sets: r.exercise_sets ?? [],
+                  prescription: r.target_rep_min && r.target_rep_max ? { sets: r.target_sets ?? 0, repMin: r.target_rep_min, repMax: r.target_rep_max } : null }));
+              const metaById = new Map(((metaRows ?? []) as { id: string; tracking_type: string; load_convention: string; equipment: string | null; mechanic: string | null }[]).map(m => [m.id, m]));
+              const settingsByKey = new Map(((settingsRes?.data ?? []) as { exercise_key: string; weight_step_lb: number | null; rest_seconds: number | null }[])
+                .map(r => [r.exercise_key, { weightStepLb: r.weight_step_lb == null ? null : Number(r.weight_step_lb), restSeconds: r.rest_seconds } as ExerciseSettings]));
+              const u = getUnit();
+              const profileFor = (p: PlanExLite) => { const m = p.exerciseId ? metaById.get(p.exerciseId) : undefined;
+                return buildProfile(m ? { tracking: m.tracking_type, load: m.load_convention, equipment: m.equipment, mechanic: m.mechanic } : null, u, settingsByKey.get(exerciseKey({ exercise_id: p.exerciseId, exercise_name: p.name }))); };
+              h.next = { dayName: next.day_name, exercises: summarize(planEx, entries, u, profileFor), pos: rotationPosition(dayList.map(d => d.id), next.id), minutes: estimateMinutes(planEx) };
             }
             else h.emptyPlan = true;
           } else h.emptyPlan = true;
@@ -196,7 +209,7 @@ export default function HomePage() {
                       {e.lastShown ? (
                         <>
                           <div className="text-fl-tx2">Last {e.lastShown.weight}×{e.lastShown.reps}</div>
-                          <div className="font-semibold">Target {e.target.weight !== null ? `${e.target.weight}` : 'add load'}×{e.target.reps}</div>
+                          <div className="font-semibold">Target {compactTarget(e.target)}</div>
                         </>
                       ) : (
                         <div className="text-fl-tx2">Find your weight</div>

@@ -11,10 +11,43 @@ export const RULES = {
   },
   /** Basic (free) double progression. */
   progression: {
-    incrementLb: 5,  // smallest common jump for most barbells and machines. Dumbbells often jump 5 lb per hand; per-exercise steps are a later feature.
+    incrementLb: 5,  // fallback step when nothing is known about the equipment
+    /**
+     * Reps added per session while holding a weight: one rep, on the set that needs it most (the lowest;
+     * on a tie, the earliest). Sets already done are kept as the floor, so a strong session is never asked
+     * to do less. A heuristic: small, reachable steps; people who beat it simply log more.
+     */
+    repsAddedPerSession: 1,
+    /** Timed holds move in 5-second steps; one second is not a meaningful target. */
+    secondsAddedPerSession: 5,
+    /** Sessions in a row under the bottom of the range, at the same weight, before a lighter option is offered. One bad day never triggers it. */
+    belowMinSessions: 3,
+    /** A weight step bigger than this share of the current weight gets a heads-up (e.g. 15 to 20 lb is +33%). */
+    bigJumpRatio: 0.1,
+    /** Past sessions the engine looks at (newest first). The target itself builds on the latest one. */
+    historyWindow: 6,
   },
+  /**
+   * Default weight steps by equipment, as {lb, kg}. Practical assumptions, editable per exercise:
+   * plates go 2.5 lb / 1.25 kg per side; dumbbell racks usually 5 lb or 2-2.5 kg; selectorized stacks
+   * (machines, most cables) 10 lb / 5 kg plates. Dumbbells and kettlebells are per implement.
+   */
+  steps: {
+    Barbell: { lb: 5, kg: 2.5 }, 'Smith Machine': { lb: 5, kg: 2.5 }, Plate: { lb: 5, kg: 2.5 },
+    Dumbbell: { lb: 5, kg: 2.5 }, Kettlebell: { lb: 5, kg: 4 },
+    Machine: { lb: 10, kg: 5 }, Cable: { lb: 10, kg: 5 },
+    Bodyweight: { lb: 5, kg: 2.5 }, // added weight on a belt or vest
+    default: { lb: 5, kg: 2.5 },
+  } as Record<string, { lb: number; kg: number }>,
   /** Default rest by top of rep range. Lifter can adjust per timer. */
   restSeconds: { heavy: 180, moderate: 120, light: 90, heavyMaxReps: 6, moderateMaxReps: 10 },
+  /**
+   * Isolation moves (curls, raises, extensions) recover faster than heavy compounds, so they cap lower:
+   * 120 s for heavy sets, otherwise 90 s. Over about 60-90 s shows no clear extra benefit for growth
+   * (Singer et al. 2024). Timed holds: 75 s. All editable per exercise and per timer.
+   */
+  restIsolation: { heavy: 120, other: 90 },
+  restBodyweight: 75,
   /** Rough session-length estimate shown before a workout. Labeled "about", never used for scoring. */
   durationEstimate: {
     secondsPerSetWork: 40,
